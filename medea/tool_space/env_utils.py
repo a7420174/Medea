@@ -4,6 +4,9 @@ Centralized environment variable management with helpful error messages.
 import os
 from typing import Optional
 
+# Valid LLM provider names
+VALID_LLM_PROVIDERS = ["OpenRouter", "Azure", "OpenAI", "Claude", "Gemini"]
+
 
 def get_env_with_error(
     var_name: str,
@@ -82,6 +85,38 @@ def get_medeadb_path() -> str:
     )
 
 
+def get_llm_provider(default: str = "OpenRouter") -> str:
+    """
+    Get the LLM_PROVIDER_NAME environment variable.
+    
+    Controls which API provider is used for LLM calls.
+    Valid values: OpenRouter, Azure, OpenAI, Claude, Gemini
+    
+    Args:
+        default: Default provider if not set
+        
+    Returns:
+        str: The provider name
+    """
+    provider = get_env_with_error(
+        "LLM_PROVIDER_NAME",
+        default=default,
+        required=False,
+        description="selecting which LLM API provider to use"
+    )
+    
+    if provider not in VALID_LLM_PROVIDERS:
+        print(
+            f"Warning: Unknown LLM_PROVIDER_NAME '{provider}'. "
+            f"Valid options: {', '.join(VALID_LLM_PROVIDERS)}. "
+            f"Falling back to '{default}'.",
+            flush=True
+        )
+        return default
+    
+    return provider
+
+
 def get_backbone_llm(default: str = "gpt-4o") -> str:
     """
     Get the BACKBONE_LLM environment variable with proper error handling.
@@ -97,6 +132,21 @@ def get_backbone_llm(default: str = "gpt-4o") -> str:
         default=default,
         required=False,
         description="specifying the main LLM model for agents"
+    )
+
+
+def get_utility_llm() -> str:
+    """
+    Get the UTILITY_LLM for lightweight tasks (quality checks, tool selection, code pre-checks).
+    Falls back to BACKBONE_LLM if not set.
+    
+    Set UTILITY_LLM in .env to use a lighter/faster model for utility tasks.
+    """
+    return get_env_with_error(
+        "UTILITY_LLM",
+        default=get_backbone_llm(),
+        required=False,
+        description="lighter model for utility tasks (quality check, tool selection)"
     )
 
 

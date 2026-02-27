@@ -4,6 +4,7 @@ import os
 import re
 import subprocess
 import sys
+import tempfile
 import threading
 from typing import Dict, List, Optional, Tuple
 
@@ -13,6 +14,10 @@ from agentlite.actions.BaseAction import BaseAction
 from agentlite.actions.InnerActions import INNER_ACT_KEY
 from agentlite.agents import ABCAgent, BaseAgent
 from agentlite.agents.agent_utils import *
+try:
+    from agentlite.agents.agent_utils import ACTION_NOT_FOUND_MESS
+except ImportError:
+    ACTION_NOT_FOUND_MESS = "[Error] Action not found in action list."
 from agentlite.commons import AgentAct, TaskPackage
 from agentlite.commons.AgentAct import ActObsChainType
 
@@ -20,7 +25,7 @@ dotenv.load_dotenv()
 
 # Use relative imports within package
 from ..tool_space.gpt_utils import chat_completion
-from ..tool_space.env_utils import get_backbone_llm
+from ..tool_space.env_utils import get_backbone_llm, get_utility_llm
 
 from .agent_llms import LLMConfig, AgentLLM, parse_action
 from .BasePrompt import BasePromptGen
@@ -143,7 +148,7 @@ class CodeGenerator(BaseAction):
 
         # Default temperature is 0.0
         agent_config = LLMConfig({'temperature': tmp})
-        self.tool_selector = ToolSelector(llm_provider=llm_provider)
+        self.tool_selector = ToolSelector(llm_provider=get_utility_llm())
 
         self.CodeGenerator_agent = AgentLLM(
             llm_config=agent_config, 
@@ -152,7 +157,8 @@ class CodeGenerator(BaseAction):
             input_variables=["instruction", "user_query", "tools"]
         )
 
-        self.pattern = r'```python\n(.*?)```'
+        # Flexible pattern: matches ```python, ```Python, ```py, ``` python, etc.
+        self.pattern = r'```\s*[Pp]y(?:thon)?\s*\n(.*?)```'
         self.max_instruction_tokens = 100000  # Conservative limit to avoid context issues
         super().__init__(
             action_name=action_name,
@@ -197,7 +203,32 @@ class CodeGenerator(BaseAction):
                 raw_code_snippet = self.CodeGenerator_agent.run(input_prompt)
                 matches = re.findall(self.pattern, raw_code_snippet, re.DOTALL)
                 if not matches:
-                    print("[CodeGenerator] No code block found in response, retrying...")
+                    # Fallback 1: try generic ``` fence without language tag
+                    generic_matches = re.findall(r'```\n(.*?)```', raw_code_snippet, re.DOTALL)
+                    if generic_matches:
+                        # Pick the longest block (most likely the actual code)
+                        matches = [max(generic_matches, key=len)]
+                        print("[CodeGenerator] Found code in generic ``` fence (no language tag).", flush=True)
+                    
+                if not matches:
+                    # Fallback 2: response contains Python code but no fences at all
+                    stripped = raw_code_snippet.strip()
+                    python_indicators = ['import ', 'from ', 'def ', 'class ', 'print(', 'if __name__']
+                    has_python = sum(1 for kw in python_indicators if kw in stripped)
+                    if has_python >= 2:
+                        # Extract from first import/from/def line to end
+                        lines = stripped.split('\n')
+                        code_start = next(
+                            (i for i, line in enumerate(lines)
+                             if any(line.strip().startswith(kw) for kw in ['import ', 'from ', 'def ', '#!', '#'])),
+                            None
+                        )
+                        if code_start is not None:
+                            matches = ['\n'.join(lines[code_start:])]
+                            print("[CodeGenerator] No code fence found, extracted Python code from response.", flush=True)
+                    
+                if not matches:
+                    print("[CodeGenerator] No code block found in response, retrying...", flush=True)
                     i += 1
                     continue
                     
@@ -254,7 +285,7 @@ class CodeGenerator(BaseAction):
         
         for attempt in range(max_attempts):
             try:
-                output = chat_completion(checker_prompt, model=os.getenv("BACKBONE_LLM"))
+                output = chat_completion(checker_prompt, model=get_utility_llm())
                 print(output, flush=True)
                 
                 match = re.match(pattern, output)
@@ -264,11 +295,16 @@ class CodeGenerator(BaseAction):
                     break
                 
                 # Try alternative patterns
-                if "approved" in output.lower() or "pass" in output.lower():
+                output_lower = output.lower()
+                if "approved" in output_lower or "pass" in output_lower:
                     decision = "Approved"
                     feedback = "Code quality check passed"
                     break
-                if "failed" in output.lower() or "error" in output.lower():
+                if "[minor]" in output_lower or "minor" == output_lower.split("]")[0].strip("[").strip():
+                    decision = "Minor"
+                    feedback = output
+                    break
+                if "failed" in output_lower or "error" in output_lower:
                     decision = "Failed"
                     feedback = output
                     break
@@ -282,6 +318,8 @@ class CodeGenerator(BaseAction):
         
         if decision and decision.lower() in ["failed", "fail"]:
             return False, f"Feedback:\n{feedback}"
+        if decision and decision.lower() == "minor":
+            print(f"[CodeGenerator] Quality check: MINOR issues (non-blocking). Proceeding.", flush=True)
         return True, feedback
 
 
@@ -322,13 +360,18 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
             'import tool_space.', 'import medea.tool_space.'
         )
         
-        # write the modified code snippet to a file
-        with open(file_path, 'w') as f:
-            f.write(path_setup + code_to_run)
+        # Use a unique temp file to avoid race conditions across parallel experiments
+        fd, tmp_path = tempfile.mkstemp(suffix='.py', prefix='medea_session_')
+        try:
+            with os.fdopen(fd, 'w') as f:
+                f.write(path_setup + code_to_run)
+        except Exception:
+            os.close(fd)
+            raise
 
         stdout_lines, stderr_lines = [], []
         p = subprocess.Popen(
-            ["python", file_path], 
+            ["python", tmp_path], 
             stdout=subprocess.PIPE, 
             stderr=subprocess.PIPE, 
             bufsize=1, 
@@ -346,6 +389,11 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
         except subprocess.TimeoutExpired:
             p.kill()
             print("Subprocess timed out and was killed.")
+        finally:
+            try:
+                os.unlink(tmp_path)
+            except OSError:
+                pass
 
         # Ensure threads have finished reading
         stdout_thread.join()
@@ -353,19 +401,31 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
         stdout = ''.join(stdout_lines)
         stderr = ''.join(stderr_lines)
-        # Check for errors based on return code and stderr content
+        
+        # Keep only real errors; drop warnings, library logs, config dumps, and progress bars
+        def _is_noise(line):
+            s = line.strip()
+            return (not s
+                    or "Warning:" in line or "warn(" in line
+                    or s[0] in '"{}'
+                    or s.startswith(("loading ", "Model config", "You're using"))
+                    or "it/s]" in line or "%|" in line)
+        
+        filtered_stderr = '\n'.join(l for l in stderr.splitlines() if not _is_noise(l))
+        
+        # Check for errors based on return code and filtered stderr content
         if p.returncode != 0:
             code_snippet.status = "error"
-            code_snippet.stderr = stderr
-            print(f"[Coding Error] {stderr}", flush=True)
+            code_snippet.stderr = filtered_stderr or stderr
+            print(f"[Coding Error] {filtered_stderr or stderr}", flush=True)
             if self.failure_iter < 3:
                 self.failure_iter += 1
                 return f'{stderr}\n{code_snippet}: Error occurred during code execution, call CodeDebugger next.'
             self.failure_iter = 0
             return f'{code_snippet}: The system cannot help with it, call Finish next.'
         
-        # If no errors, proceed
-        code_snippet.stderr = None
+        # If no errors, proceed (store filtered stderr for transparency but mark as non-error)
+        code_snippet.stderr = filtered_stderr if filtered_stderr else None
         code_snippet.code_output = stdout
         code_snippet.status = "executed"
         return f'{code_snippet}: Successfully executed, call AnalysisQualityChecker action next.'
@@ -397,7 +457,7 @@ class CodeDebug(BaseAction):
             llm_name=llm_provider, 
             system_prompt=DEBUGGER_TEMPLATE
         )
-        self.pattern = r'```python\n(.*?)```'
+        self.pattern = r'```\s*[Pp]y(?:thon)?\s*\n(.*?)```'
         
     def __call__(self, code_snippet: CodeSnippet):
         if code_snippet.status != "error":
@@ -433,9 +493,9 @@ class AnalysisQualityChecker(BaseAction):
     """Checks code quality and provides feedback for improvement."""
     
     def __init__(self, llm_provider: str = None, tmp: float = 0.4, max_iter: int = 3) -> None:
-        # Get LLM provider with helpful error message if not provided
+        # Quality checking is a utility task — use UTILITY_LLM if available
         if llm_provider is None:
-            llm_provider = get_backbone_llm("gpt-4o")
+            llm_provider = get_utility_llm()
         
         action_name = "AnalysisQualityChecker"
         action_desc = "After each successful code execution using the AnalysisExecution action, using this action to provide feedback on the code snippet, evaluating its informativeness and correctness"
@@ -490,14 +550,19 @@ class AnalysisQualityChecker(BaseAction):
             print(output, flush=True)
             match = re.match(self.pattern, output)
             if match:
-                decision = match.group(1)  # Decision: Pass or Failed
+                decision = match.group(1)  # Decision: Approved, Minor, or Failed
                 feedback = match.group(2)  # Feedback
                 code_snippet.update_feedback(feedback)
                 break
+        
         if decision == "Failed":
             self.iterations += 1
             code_snippet.status = "error"
             return f"{output}\n{code_snippet}: Failed, call CodeDebugger action next."
+        
+        if decision == "Minor":
+            print(f"[AnalysisQualityChecker] Non-critical issues found (iteration {self.iterations+1}/{self.max_iter}). Approving with feedback.", flush=True)
+            print(f"Feeback from AnalysisQualityChecker (if any):\n{feedback}\n", flush=True)
         
         self.iterations = 0
         code_snippet.status = "approved"
@@ -712,10 +777,30 @@ class Analysis(BaseAgent):
         
         # Resolve code_snippet references from action chain
         if 'code_snippet' in args and args['code_snippet'] is not None:
+            cs_ref = str(args['code_snippet']).strip()
+            resolved = False
+            # Try exact match first
             for _, p_obs in reversed(action_chain):
-                if isinstance(p_obs, CodeSnippet) and p_obs.get_id() == args['code_snippet']:
+                if isinstance(p_obs, CodeSnippet) and p_obs.get_id() == cs_ref:
                     args["code_snippet"] = p_obs
+                    resolved = True
                     break
+            # Fallback: find any CodeSnippet in action chain (observations are often strings)
+            if not resolved:
+                for _, p_obs in reversed(action_chain):
+                    if isinstance(p_obs, CodeSnippet):
+                        args["code_snippet"] = p_obs
+                        resolved = True
+                        break
+            # Last resort: check if any observation string contains a CodeSnippet ID pattern
+            if not resolved and "<CodeSnippet:" in cs_ref:
+                for a_act, a_obs in reversed(action_chain):
+                    if hasattr(a_act, 'params') and 'code_snippet' in a_act.params:
+                        param = a_act.params['code_snippet']
+                        if isinstance(param, CodeSnippet):
+                            args["code_snippet"] = param
+                            resolved = True
+                            break
         
         # Resolve instruction references from action chain or context
         if 'instruction' in args and args['instruction'] is not None:

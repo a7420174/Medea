@@ -72,6 +72,30 @@ Now, generate a realistic query based on the following input (return only the qu
     - Cell Line: {cell_line}
 """
 
+sl_query_yeast_openend = """
+Your task is to generate a realistic query that a biologist would ask about the synthetic genetic interaction between two mutated genes in yeast (Saccharomyces cerevisiae), using the provided context:
+    - Mutated Gene A: [Gene A]
+    - Mutated Gene B: [Gene B]
+    - Condition: [Condition]
+
+Guidelines:
+    1. Avoid mentioning any specific type of synthetic genetic interaction in the query, or hinting at the expected type of interaction.
+    2. Ask clearly for what would be the synthetic genetic interaction with a tone that a biologist would use in daily practice.
+    3. Ensure the query specifies the organism (Saccharomyces cerevisiae) and the specific experimental condition.
+
+Example Input:
+    - Mutated Gene A: ELP4
+    - Mutated Gene B: RPD3
+    - Condition: BLEO
+
+Example Output:
+    "What would be the synthetic genetic interaction resulting from the concurrent mutation of ELP4 and RPD3 in the budding yeast Saccharomyces cerevisiae given the bleomycin treatment, if any?"
+
+Now, generate a realistic query based on the following input (return only the query, no other text):
+    - Mutated Gene A: {gene_a}
+    - Mutated Gene B: {gene_b}
+    - Condition: {condition}
+"""
 
 # Synthetic Lethality Prediction
 sl_instruction_default = """ Use DepMap data to retrieve correlation metrics reflecting the co-dependency of the gene pair on cell viability. Next, perform pathway enrichment analysis with Enrichr to identify whether pathways associated with cell viability are significantly enriched and could be impacted by the gene pair. Synthesize the DepMap and Enrichr results, evaluate whether the combined perturbation of these genes is likely to induce a significant effect on cell viability, and find literature support if exist."""
@@ -134,7 +158,9 @@ Categories:
 """
 
 
-SL_REASON_CHECK = """Given a reasoning paragraph, determine which category or categories below it fits—based on whether it concludes that synthetic lethality (SL) represents a (potential) genetic interaction between two genes. Return only the exact category name(s), with no additional commentary.
+SL_REASON_CHECK = """Given a reasoning paragraph, determine which category best fits based on whether it supports a synthetic genetic interaction (synthetic lethality or synthetic sickness) between two genes. Return only the exact category name, with no additional commentary.
+
+IMPORTANT: Distinguish between conclusions backed by empirical evidence vs. purely speculative reasoning.
 
 ----
 Reasoning Paragraph:
@@ -142,24 +168,26 @@ Reasoning Paragraph:
 
 ----
 Categories:
-- Synthetic lethality: Select this category if the paragraph clearly concludes or strongly supports that the combined perturbation (loss/inhibition/KO) of the two genes reduces viability, and concludes that synthetic lethality (SL). Signals include: “synthetic lethal/sickness,” “double knockout is lethal,” “co-inhibition is lethal/toxic”.
-- Non-SL: Select if the paragraph argues that synthetic lethality is unlikely.
-- Abstain: Select if the paragraph is ambiguous, inconclusive, or does not clearly support or refute synthetic lethality.
-- Failed: Select if the paragraph refuses, reports inability, or returns an error (e.g., "I can't help", "failed", "none" with no reasoning).
+- Synthetic lethality: The paragraph concludes and supports that the combined perturbation (loss/inhibition/KO) of the two genes reduces viability, and concludes that synthetic lethality (SL). Signals include: “synthetic lethal/sickness,” “double knockout is lethal,” “co-inhibition is lethal/toxic”.
+- Non-SL: The paragraph states or supports that the two genes do not exhibit synthetic lethality/sickness, or argues that synthetic lethality is unlikely.
+- Abstain: The paragraph is ambiguous, inconclusive, or acknowledges insufficient information to make a determination (e.g., "no evidence found", "can't determine", "further research needed").
+- Failed: The paragraph refuses, reports inability, or returns an error (e.g., "I can't help", "failed", "none" with no reasoning).
 
-Provide only the name(s) of the applicable category or categories.
+Provide only the name of the applicable category.
 """
 
 
 IMMUNE_ANS_CHECK = """
 Determine which category best describes the statement below. Output only the category label (no extra text):
 
+IMPORTANT: Distinguish between conclusions backed by empirical/clinical evidence vs. purely speculative reasoning. Speculative conclusions without cited evidence should be classified as Abstain.
+
 Statement:
 {reasoning_result}
 
 Categories:
-    - R: A positive verdict that response/benefit is likely (e.g., "likely/moderately likely to respond", "responder", "clinical benefit expected").
-    - NR: A negative verdict that response is unlikely (e.g., "unlikely to respond", "non-responder", "no benefit", "resistant").
-    - Abstain: Ambiguous or mixed evidence with no overall verdict; hedged assessments without a clear lean; requests more information.
+    - R: A positive verdict that response/benefit is likely, backed by clinical or molecular evidence (e.g., "likely/moderately likely to respond", "responder", "clinical benefit expected" with supporting data).
+    - NR: A negative verdict that response is unlikely, backed by clinical or molecular evidence (e.g., "unlikely to respond", "non-responder", "no benefit", "resistant" with supporting data).
+    - Abstain: Ambiguous or mixed evidence with no overall verdict; hedged assessments without a clear lean; purely speculative reasoning without empirical support; statements that agents failed or found no evidence.
     - Failed: The paragraph refuses, reports inability, or returns an error (e.g., "I can't help", "failed", "none" with no reasoning).
 """

@@ -2,7 +2,7 @@
     {
         "name": "load_disease_targets",
         "type": "tool",
-        "description": "Given a disease name, this tool fetch the pre-stored disease-associted target set locally that pre-downloaded from OpenTarget-2025. It return a set with target names for the specified disease that open target genetic score (identified by GWAS), and approved for marketing by the U.S Food and Drug Administration (FDA). ",
+        "description": "SPECIES: Human only. Given a disease name, this tool queries the OpenTargets API to retrieve disease-associated targets with genetic evidence (GWAS) and FDA approval status. Returns a set of human target gene names for the specified disease.",
         "import_path": "from medea.tool_space.action_functions import load_disease_targets",
         "input_params": [
             {"name": "disease_name", "type": "str", "description": "the name of the disease"}
@@ -17,7 +17,7 @@
     {
         "name": "load_pinnacle_ppi",
         "type": "tool",
-        "description": "Loads protein embeddings for PINNACLE, a geometric deep learning model that can generate protein representations in different celltype contexts. This function efficiently retrieves embeddings only for genes that are active within a specified cell type, avoiding loading unnecessary data for other cell types.",
+        "description": "SPECIES: Human only (human cell types and gene symbols). Loads protein embeddings for PINNACLE, a geometric deep learning model that can generate protein representations in different celltype contexts. This function efficiently retrieves embeddings only for genes that are active within a specified cell type, avoiding loading unnecessary data for other cell types. For non-human genes, map to human orthologs first (e.g., use find_human_orthologs_for_yeast_gene for yeast genes).",
         "import_path": "from medea.tool_space.action_functions import load_pinnacle_ppi",
         "input_params": [
             {"name": "cell_type", "type": "str", "description": "The specific cell type to load embeddings for (e.g., 'b_cell', 'hepatocyte', 'neuron'). Function will find best matching cell type using fuzzy matching."}
@@ -33,7 +33,7 @@
     {
         "name": "humanbase_ppi_retrieve",
         "type": "tool",
-        "description": "LEGACY FUNCTION - This function retrieves a tissue-specific interaction network using the HumanBase API. Returns NetworkX graph object with interaction scores. Consider using the new class-based analyzers (humanbase_analyze_tissue_coexpression, humanbase_analyze_tissue_protein_interactions, etc.) for better agent-friendly outputs.",
+        "description": "SPECIES: Human gene symbols only. LEGACY FUNCTION - This function retrieves a tissue-specific interaction network using the HumanBase API. Returns NetworkX graph object with interaction scores. Consider using the new class-based analyzers (humanbase_analyze_tissue_coexpression, humanbase_analyze_tissue_protein_interactions, etc.) for better agent-friendly outputs. For non-human genes, map to human orthologs first (e.g., use find_human_orthologs_for_yeast_gene for yeast genes).",
         "import_path": "from medea.tool_space.humanbase import humanbase_ppi_retrieve",
         "input_params": [
             {"name": "genes", "type": "list[str]", "description": "A list of gene symbols (gene names, strings)"},
@@ -59,7 +59,7 @@
     {
         "name": "humanbase_analyze_tissue_coexpression",
         "type": "tool",
-        "description": "Analyzes tissue-specific gene co-expression patterns using HumanBase API. Identifies genes with similar expression profiles in specific tissues, indicating coordinated regulation and potential functional relationships. Strong co-expression (≥0.7) suggests genes are co-regulated in the tissue context, while moderate co-expression (0.4-0.7) indicates functional associations. PERFORMANCE NOTE: Keep max_interactions < 10 for optimal agent performance. Processing time is 10-15 seconds per gene. Please avoid any repeat/concurrent calls that cause heavy load on the server.",
+        "description": "SPECIES: Human gene symbols only. Analyzes tissue-specific gene co-expression patterns using HumanBase API. For non-human genes, map to human orthologs first (e.g., use find_human_orthologs_for_yeast_gene for yeast genes). Identifies genes with similar expression profiles in specific tissues, indicating coordinated regulation and potential functional relationships. Strong co-expression (≥0.7) suggests genes are co-regulated in the tissue context, while moderate co-expression (0.4-0.7) indicates functional associations. PERFORMANCE NOTE: Keep max_interactions < 10 for optimal agent performance. Processing time is 10-15 seconds per gene. Please avoid any repeat/concurrent calls that cause heavy load on the server.",
         "import_path": "from medea.tool_space.humanbase import humanbase_analyze_tissue_coexpression",
         "input_params": [
             {"name": "genes", "type": "list[str]", "description": "List of gene symbols to analyze for co-expression"},
@@ -80,7 +80,7 @@
     {
         "name": "humanbase_analyze_tissue_protein_interactions",
         "type": "tool", 
-        "description": "Analyzes tissue-specific protein-protein interactions using HumanBase API. Identifies direct and indirect protein interactions within specific tissue contexts. High-confidence interactions (≥0.6) indicate physical protein complexes or direct binding partners, while lower scores suggest pathway-level associations. PERFORMANCE NOTE: Keep max_interactions ≤ 10 for optimal agent performance. Processing time is 10-15 seconds per gene. Please avoid any repeat/concurrent calls that cause heavy load on the server.",
+        "description": "SPECIES: Human gene symbols only. Analyzes tissue-specific protein-protein interactions using HumanBase API. For non-human genes, map to human orthologs first (e.g., use find_human_orthologs_for_yeast_gene for yeast genes). Identifies direct and indirect protein interactions within specific tissue contexts. High-confidence interactions (≥0.6) indicate physical protein complexes or direct binding partners, while lower scores suggest pathway-level associations. PERFORMANCE NOTE: Keep max_interactions ≤ 10 for optimal agent performance. Processing time is 10-15 seconds per gene. Please avoid any repeat/concurrent calls that cause heavy load on the server.",
         "import_path": "from medea.tool_space.humanbase import humanbase_analyze_tissue_protein_interactions",
         "input_params": [
             {"name": "genes", "type": "list[str]", "description": "List of gene symbols to analyze for protein interactions"},
@@ -101,7 +101,7 @@
     {
         "name": "humanbase_analyze_tissue_transcription_regulation",
         "type": "tool",
-        "description": "Analyzes tissue-specific transcription factor regulation using HumanBase API. Identifies transcription factor-target gene relationships and regulatory networks within specific tissues. Hub transcription factors controlling multiple targets suggest master regulatory roles in tissue-specific gene expression programs. PERFORMANCE NOTE: Keep max_interactions ≤ 10 for optimal agent performance. Processing time is 10-15 seconds per gene. Please avoid any repeat/concurrent calls that cause heavy load on the server.",
+        "description": "SPECIES: Human gene symbols only. Analyzes tissue-specific transcription factor regulation using HumanBase API. For non-human genes, map to human orthologs first (e.g., use find_human_orthologs_for_yeast_gene for yeast genes). Identifies transcription factor-target gene relationships and regulatory networks within specific tissues. Hub transcription factors controlling multiple targets suggest master regulatory roles in tissue-specific gene expression programs. PERFORMANCE NOTE: Keep max_interactions ≤ 10 for optimal agent performance. Processing time is 10-15 seconds per gene. Please avoid any repeat/concurrent calls that cause heavy load on the server.",
         "import_path": "from medea.tool_space.humanbase import humanbase_analyze_tissue_transcription_regulation",
         "input_params": [
             {"name": "genes", "type": "list[str]", "description": "List of gene symbols to analyze for transcriptional regulation"},
@@ -122,7 +122,7 @@
     {
         "name": "humanbase_analyze_tissue_microrna_regulation",
         "type": "tool",
-        "description": "Analyzes tissue-specific microRNA-target interactions using HumanBase API. Identifies post-transcriptional regulatory mechanisms that fine-tune gene expression in tissue-specific contexts. These interactions control cellular responses and adaptation through targeted mRNA degradation or translation inhibition. PERFORMANCE NOTE: Keep max_interactions ≤ 10 for optimal agent performance. Processing time is 10-15 seconds per gene. Please avoid any repeat/concurrent calls that cause heavy load on the server.",
+        "description": "SPECIES: Human gene symbols only. Analyzes tissue-specific microRNA-target interactions using HumanBase API. For non-human genes, map to human orthologs first (e.g., use find_human_orthologs_for_yeast_gene for yeast genes). Identifies post-transcriptional regulatory mechanisms that fine-tune gene expression in tissue-specific contexts. These interactions control cellular responses and adaptation through targeted mRNA degradation or translation inhibition. PERFORMANCE NOTE: Keep max_interactions ≤ 10 for optimal agent performance. Processing time is 10-15 seconds per gene. Please avoid any repeat/concurrent calls that cause heavy load on the server.",
         "import_path": "from medea.tool_space.humanbase import humanbase_analyze_tissue_microrna_regulation",
         "input_params": [
             {"name": "genes", "type": "list[str]", "description": "List of gene symbols to analyze for microRNA regulation"},
@@ -143,7 +143,7 @@
     {
         "name": "humanbase_analyze_tissue_perturbation_outcomes",
         "type": "tool",
-        "description": "Analyzes tissue-specific gene perturbation outcomes using HumanBase API. Predicts functional consequences when genes are knocked down or overexpressed in specific tissues. High-impact responses (≥0.6) indicate genes with strong functional roles and potential as therapeutic targets or biomarkers for tissue-specific interventions. PERFORMANCE NOTE: Keep max_interactions ≤ 10 for optimal agent performance. Processing time is 10-15 seconds per gene. Please avoid any repeat/concurrent calls that cause heavy load on the server.",
+        "description": "SPECIES: Human gene symbols only. Analyzes tissue-specific gene perturbation outcomes using HumanBase API. For non-human genes, map to human orthologs first (e.g., use find_human_orthologs_for_yeast_gene for yeast genes). Predicts functional consequences when genes are knocked down or overexpressed in specific tissues. High-impact responses (≥0.6) indicate genes with strong functional roles and potential as therapeutic targets or biomarkers for tissue-specific interventions. PERFORMANCE NOTE: Keep max_interactions ≤ 10 for optimal agent performance. Processing time is 10-15 seconds per gene. Please avoid any repeat/concurrent calls that cause heavy load on the server.",
         "import_path": "from medea.tool_space.humanbase import humanbase_analyze_tissue_perturbation_outcomes",
         "input_params": [
             {"name": "genes", "type": "list[str]", "description": "List of gene symbols to analyze for perturbation effects"},
@@ -164,7 +164,7 @@
     {
         "name": "humanbase_analyze_comprehensive_tissue_network",
         "type": "tool",
-        "description": "Performs comprehensive tissue-specific network analysis across all HumanBase interaction types (co-expression, protein interactions, transcriptional regulation, microRNA regulation, and perturbation outcomes). Provides complete molecular interaction profile for genes within a specific tissue context, enabling holistic understanding of tissue-specific gene function. PERFORMANCE NOTE: This runs 5 analyses - keep max_interactions ≤ 8 for optimal agent performance. Processing time is 10-15 seconds per gene. Please avoid any repeat/concurrent calls that cause heavy load on the server.",
+        "description": "SPECIES: Human gene symbols only. Performs comprehensive tissue-specific network analysis across all HumanBase interaction types (co-expression, protein interactions, transcriptional regulation, microRNA regulation, and perturbation outcomes). For non-human genes, map to human orthologs first (e.g., use find_human_orthologs_for_yeast_gene for yeast genes). Provides complete molecular interaction profile for genes within a specific tissue context, enabling holistic understanding of tissue-specific gene function. PERFORMANCE NOTE: This runs 5 analyses - keep max_interactions ≤ 8 for optimal agent performance. Processing time is 10-15 seconds per gene. Please avoid any repeat/concurrent calls that cause heavy load on the server.",
         "import_path": "from medea.tool_space.humanbase import humanbase_analyze_comprehensive_tissue_network",
         "input_params": [
             {"name": "genes", "type": "list[str]", "description": "List of gene symbols for comprehensive analysis"},
@@ -181,7 +181,7 @@
     {
         "name": "analyze_pathway_interaction",
         "type": "tool",
-        "description": "Analyzes genetic interactions between two genes using WikiPathways database. This tool identifies shared biological pathways, determines interaction confidence based on statistical significance, and classifies interaction mechanisms such as signaling pathways, metabolic regulation, and cellular transport. Returns standardized analysis results with biological context.",
+        "description": "SPECIES: Human gene symbols only. Analyzes genetic interactions between two genes using WikiPathways database. For non-human genes (e.g., yeast), map to human orthologs first using find_human_orthologs_for_yeast_gene. This tool identifies shared biological pathways, determines interaction confidence based on statistical significance, and classifies interaction mechanisms such as signaling pathways, metabolic regulation, and cellular transport. Returns standardized analysis results with biological context.",
         "import_path": "from medea.tool_space.enrichr import analyze_pathway_interaction",
         "input_params": [
             {"name": "gene1", "type": "str", "description": "First gene symbol for interaction analysis"},
@@ -201,7 +201,7 @@
     {
         "name": "analyze_reactome_interaction",
         "type": "tool", 
-        "description": "Analyzes genetic interactions between two genes using Reactome biochemical pathways database. This tool identifies shared biochemical reactions, protein complexes, and molecular mechanisms. It determines interaction confidence and classifies molecular mechanisms such as phosphorylation regulation, protein complex formation, and direct binding interactions.",
+        "description": "SPECIES: Human gene symbols only. Analyzes genetic interactions between two genes using Reactome biochemical pathways database. For non-human genes (e.g., yeast), map to human orthologs first using find_human_orthologs_for_yeast_gene. This tool identifies shared biochemical reactions, protein complexes, and molecular mechanisms. It determines interaction confidence and classifies molecular mechanisms such as phosphorylation regulation, protein complex formation, and direct binding interactions.",
         "import_path": "from medea.tool_space.enrichr import analyze_reactome_interaction",
         "input_params": [
             {"name": "gene1", "type": "str", "description": "First gene symbol for biochemical interaction analysis"},
@@ -221,7 +221,7 @@
     {
         "name": "analyze_hallmark_interaction",
         "type": "tool",
-        "description": "Analyzes genetic interactions between two genes using MSigDB Hallmark cancer processes database. This tool identifies shared cancer hallmark processes, determines interaction confidence, and classifies cancer-related mechanisms such as apoptotic regulation, proliferative control, and metabolic reprogramming. Particularly useful for cancer gene interaction analysis.",
+        "description": "SPECIES: Human gene symbols only. Analyzes genetic interactions between two genes using MSigDB Hallmark cancer processes database. For non-human genes (e.g., yeast), map to human orthologs first using find_human_orthologs_for_yeast_gene. This tool identifies shared cancer hallmark processes, determines interaction confidence, and classifies cancer-related mechanisms such as apoptotic regulation, proliferative control, and metabolic reprogramming. Particularly useful for cancer gene interaction analysis.",
         "import_path": "from medea.tool_space.enrichr import analyze_hallmark_interaction",
         "input_params": [
             {"name": "gene1", "type": "str", "description": "First gene symbol for cancer hallmark analysis"},
@@ -241,7 +241,7 @@
     {
         "name": "analyze_function_interaction",
         "type": "tool",
-        "description": "Analyzes genetic interactions between two genes using Gene Ontology Molecular Functions database. This tool identifies shared molecular functions, determines interaction confidence, and classifies functional mechanisms such as kinase activity, protein binding, and transcriptional regulation. Useful for understanding biochemical function similarities.",
+        "description": "SPECIES: Human gene symbols only. Analyzes genetic interactions between two genes using Gene Ontology Molecular Functions database. For non-human genes (e.g., yeast), map to human orthologs first using find_human_orthologs_for_yeast_gene. This tool identifies shared molecular functions, determines interaction confidence, and classifies functional mechanisms such as kinase activity, protein binding, and transcriptional regulation. Useful for understanding biochemical function similarities.",
         "import_path": "from medea.tool_space.enrichr import analyze_function_interaction",
         "input_params": [
             {"name": "gene1", "type": "str", "description": "First gene symbol for molecular function analysis"},
@@ -261,7 +261,7 @@
     {
         "name": "analyze_process_interaction",
         "type": "tool",
-        "description": "Analyzes genetic interactions between two genes using Gene Ontology Biological Processes database. This tool identifies shared biological processes, determines interaction confidence, and classifies process mechanisms such as cell cycle regulation, apoptotic processes, and signal transduction. Useful for understanding cellular process co-participation.",
+        "description": "SPECIES: Human gene symbols only. Analyzes genetic interactions between two genes using Gene Ontology Biological Processes database. For non-human genes (e.g., yeast), map to human orthologs first using find_human_orthologs_for_yeast_gene. This tool identifies shared biological processes, determines interaction confidence, and classifies process mechanisms such as cell cycle regulation, apoptotic processes, and signal transduction. Useful for understanding cellular process co-participation.",
         "import_path": "from medea.tool_space.enrichr import analyze_process_interaction",
         "input_params": [
             {"name": "gene1", "type": "str", "description": "First gene symbol for biological process analysis"},
@@ -281,7 +281,7 @@
     {
         "name": "analyze_comprehensive_interaction",
         "type": "tool",
-        "description": "Performs comprehensive genetic interaction analysis by running all five Enrichr-based tools (pathway, reactome, hallmark, function, and process analysis) on a gene pair. This tool provides a complete interaction profile across multiple biological databases, returning results from each analysis tool in a structured format with detailed logging. WARNING: This is a compound tool and is very slow and may take up to 2 minutes to complete.",
+        "description": "SPECIES: Human gene symbols only. Performs comprehensive genetic interaction analysis by running all five Enrichr-based tools (pathway, reactome, hallmark, function, and process analysis) on a gene pair. For non-human genes (e.g., yeast), map to human orthologs first using find_human_orthologs_for_yeast_gene. This tool provides a complete interaction profile across multiple biological databases, returning results from each analysis tool in a structured format with detailed logging. WARNING: This is a compound tool and is very slow and may take up to 2 minutes to complete.",
         "import_path": "from medea.tool_space.enrichr import analyze_comprehensive_interaction",
         "input_params": [
             {"name": "gene1", "type": "str", "description": "First gene symbol for comprehensive interaction analysis"},
@@ -297,7 +297,7 @@
     {
         "name": "compass_predict",
         "type": "tool",
-        "description": "This tool leverages COMPASS, a research framework for concept feature extraction and Immune Checkpoint Inhibitor (ICI) response prediction, to analyze bulk transcriptomic data from a single patient. It provides insights into cell-type-level immune-related concepts that are highly correlated with ICI responsiveness. These high-level concepts include immune cell types, states, and oncogenic pathways in the tumor microenvironment, creating a detailed multidimensional landscape of the cancer-immunity interplay.",
+        "description": "SPECIES: Human only (trained on human single-cell data). This tool leverages COMPASS, a research framework for concept feature extraction and Immune Checkpoint Inhibitor (ICI) response prediction, to analyze bulk transcriptomic data from a single patient. It provides insights into cell-type-level immune-related concepts that are highly correlated with ICI responsiveness. These high-level concepts include immune cell types, states, and oncogenic pathways in the tumor microenvironment, creating a detailed multidimensional landscape of the cancer-immunity interplay.",
         "import_path": "from medea.tool_space.compass import compass_predict",
         "input_params": [
             {
@@ -327,7 +327,7 @@
     {
         "name": "compute_depmap24q2_gene_correlations",
         "type": "tool",
-        "description": "Validates genetic interactions using empirical cell viability data from 1,320 cancer cell lines. Determines if two genes have correlated knockout effects: positive correlations indicate co-dependency (shared essential function), negative correlations suggest synthetic lethality (compensatory relationship). Use to prioritize gene pairs for experimental validation, combination therapy development, or functional studies. Strong correlations (|r| > 0.5, adj_p < 0.05) provide robust evidence for therapeutic targeting. Essential for translating pathway predictions into clinically-actionable insights. Inference time is 30 second per gene pair. Please avoid any repeat/concurrent calls that cause heavy load on the server.",
+        "description": "SPECIES: Human gene symbols only. Validates genetic interactions using empirical cell viability data from 1,320 human cancer cell lines (DepMap 24Q2). For non-human genes (e.g., yeast), map to human orthologs first using find_human_orthologs_for_yeast_gene. Determines if two genes have correlated knockout effects: positive correlations indicate co-dependency (shared essential function), negative correlations suggest synthetic lethality (compensatory relationship). Use to prioritize gene pairs for experimental validation, combination therapy development, or functional studies. Strong correlations (|r| > 0.5, adj_p < 0.05) provide robust evidence for therapeutic targeting. Essential for translating pathway predictions into clinically-actionable insights. Inference time is 30 second per gene pair. Please avoid any repeat/concurrent calls that cause heavy load on the server.",
         "import_path": "from medea.tool_space.depmap import compute_depmap24q2_gene_correlations",
         "input_params": [
             {
@@ -406,7 +406,7 @@
     {
         "name": "TranscriptformerEmbeddingTool",
         "type": "tool",
-        "description": "A high-performance tool to load cell-type and disease-state specific gene embeddings. It queries a pre-generated, high-performance embedding store, supporting both Ensembl IDs and official gene symbols with near-instant initialization and on-demand data loading. Can retrieve embeddings for specific genes or all genes in a context.",
+        "description": "SPECIES: Human only (human disease and cell type contexts). A high-performance tool to load cell-type and disease-state specific gene embeddings. It queries a pre-generated, high-performance embedding store, supporting both Ensembl IDs and official gene symbols with near-instant initialization and on-demand data loading. Can retrieve embeddings for specific genes or all genes in a context.",
         "import_path": "from medea.tool_space.transcriptformer import TranscriptformerEmbeddingTool",
         "input_params": [
             {"name": "state", "type": "str", "description": "The disease state context, e.g., 'control' or 'disease'"},
@@ -438,7 +438,7 @@
     {
         "name": "HPAGetComprehensiveBiologicalProcessTool",
         "type": "tool",
-        "description": "[CRITICAL WARNING]: This is a computational heavy tool and take up to 2 minutes to complete for a single call. Comprehensive biological process analysis tool that leverages Human Protein Atlas API to provide enhanced gene function analysis. Features include process categorization into 10 functional groups (cell_cycle, apoptosis, transcription, metabolism, signaling, immune, development, stress_response, transport, dna_repair), critical process identification, pathway analysis, comparative analysis with interacting proteins, and automated functional insights generation. Provides specific critical processes and disease-relevant biological processes instead of broad messages, along with therapeutic potential evaluation and research priority recommendations. Essential for gene function discovery, drug target identification, and disease mechanism analysis.",
+        "description": "SPECIES: Human gene symbols only. [CRITICAL WARNING]: This is a computational heavy tool and take up to 2 minutes to complete for a single call. For non-human genes (e.g., yeast), map to human orthologs first using find_human_orthologs_for_yeast_gene. Comprehensive biological process analysis tool that leverages Human Protein Atlas API to provide enhanced gene function analysis. Features include process categorization into 10 functional groups (cell_cycle, apoptosis, transcription, metabolism, signaling, immune, development, stress_response, transport, dna_repair), critical process identification, pathway analysis, comparative analysis with interacting proteins, and automated functional insights generation. Provides specific critical processes and disease-relevant biological processes instead of broad messages, along with therapeutic potential evaluation and research priority recommendations. Essential for gene function discovery, drug target identification, and disease mechanism analysis.",
         "import_path": "from medea.tool_space.human_protein_atlas import HPAGetComprehensiveBiologicalProcessTool",
         "input_params": [
             {"name": "gene_name", "type": "str", "description": "Name of the gene to analyze (e.g., 'TP53', 'BRCA1', 'EGFR')"},
@@ -472,7 +472,7 @@
     {
         "name": "HPAGetEnhancedComparativeExpressionTool",
         "type": "tool",
-        "description": "[CRITICAL WARNING]: This is a computational heavy tool and take up to 2 minutes to complete for a single call. Enhanced tool for comparing gene expression levels between cell lines and healthy tissues. Leverages Human Protein Atlas API with additional features including detailed expression analysis, statistical significance assessment, expression level categorization, and comprehensive comparison insights. Provides therapeutic potential evaluation, biomarker assessment, and clinical relevance insights. Supports 10 cancer cell lines with detailed metadata including cancer type, origin tissue, and cell line descriptions. WARNING: This tool would take at least 20 seconds to complete.",
+        "description": "SPECIES: Human gene symbols only. [CRITICAL WARNING]: This is a computational heavy tool and take up to 2 minutes to complete for a single call. For non-human genes (e.g., yeast), map to human orthologs first using find_human_orthologs_for_yeast_gene. Enhanced tool for comparing gene expression levels between cell lines and healthy tissues. Leverages Human Protein Atlas API with additional features including detailed expression analysis, statistical significance assessment, expression level categorization, and comprehensive comparison insights. Provides therapeutic potential evaluation, biomarker assessment, and clinical relevance insights. Supports 10 cancer cell lines with detailed metadata including cancer type, origin tissue, and cell line descriptions. WARNING: This tool would take at least 20 seconds to complete.",
         "import_path": "from medea.tool_space.human_protein_atlas import HPAGetEnhancedComparativeExpressionTool",
         "input_params": [
             {"name": "gene_name", "type": "str", "description": "Gene name or symbol (e.g., 'TP53', 'BRCA1', 'EGFR')"},
@@ -501,6 +501,90 @@
                 "code": "# Analyze multiple cell lines for comprehensive comparison\ncell_lines = [\"hela\", \"mcf7\", \"a549\", \"hepg2\"]\ngene = \"TP53\"\n\ntool = HPAGetEnhancedComparativeExpressionTool({})\nresults = {}\n\nfor cell_line in cell_lines:\n    result = tool.run({\n        \"gene_name\": gene,\n        \"cell_line\": cell_line,\n        \"include_statistical_analysis\": True,\n        \"include_expression_breakdown\": True,\n        \"include_therapeutic_insights\": True\n    })\n    results[cell_line] = result\n\n# Compare results across cell lines\nprint(f\"Comparative analysis of {gene} across {len(cell_lines)} cell lines:\")\nfor cell_line, result in results.items():\n    if \"error\" not in result:\n        cancer_type = result['cell_line_info']['type']\n        fold_change = result['expression_analysis']['expression_ratio']\n        therapeutic = result['therapeutic_insights']['therapeutic_potential']\n        print(f\"  {cell_line} ({cancer_type}): {fold_change}x, {therapeutic} potential\")\n    else:\n        print(f\"  {cell_line}: {result['error']}\")"
             }
         ]
+    },
+    {
+        "name": "find_human_orthologs_for_yeast_gene",
+        "type": "tool",
+        "description": "Cross-species ortholog mapping from model organism to human. Given a gene from Saccharomyces cerevisiae (budding yeast), identifies the corresponding human ortholog(s) with confidence scoring. This is a prerequisite step when analyzing yeast genetic data (e.g., synthetic lethality screens, fitness assays, chemical-genetic profiles) in a translational context — most downstream tools (pathway analysis, DepMap, HumanBase, HPA) require human gene symbols. Integrates two data sources: (1) SGD (Saccharomyces Genome Database) for curated Alliance/DIOPT ortholog predictions and experimentally validated functional complementation, and (2) PomBase for triangulated mappings via the fission yeast S. pombe as a bridge species. Accepts both standard gene names (e.g., RAD51, CDC28) and systematic ORF names (e.g., YER095W). Also returns comprehensive gene annotation from SGD (function description, gene type, aliases). First call caches PomBase bulk data locally (~230KB, refreshed every 30 days).",
+        "import_path": "from medea.tool_space.yeast_human_orthologs import find_human_orthologs_for_yeast_gene",
+        "input_params": [
+            {"name": "yeast_gene", "type": "str", "description": "Yeast gene name - standard (e.g., 'RAD51', 'CDC28', 'TUB1') or systematic (e.g., 'YER095W', 'YBR160W')"},
+            {"name": "include_pombase", "type": "bool", "description": "Whether to include PomBase triangulated orthologs via S. pombe bridge species (default: True). Set False for SGD-only results."}
+        ],
+        "return_type": "dict",
+        "returns": "Dictionary with keys: success (bool), yeast_gene (str), yeast_info (dict with gene_name, systematic_name, sgd_id, description, gene_type, qualifier, aliases, url), orthologs (list of dicts with target_gene, target_id, confidence, data_source, prediction_methods), num_orthologs (int), complementation (list of experimentally validated functional complementation records with direction, strain_background, PMID), num_complementation (int), data_sources_used (list of str), summary (str).",
+        "code_example": [
+            {
+                "description": "Find human orthologs for yeast CDC28 (cyclin-dependent kinase)",
+                "code": "from medea.tool_space.yeast_human_orthologs import find_human_orthologs_for_yeast_gene\n\nresult = find_human_orthologs_for_yeast_gene('CDC28', include_pombase=True)\nprint(f\"Summary: {result['summary']}\")\n# Output: Found 3 human ortholog(s) for yeast gene CDC28. High confidence: CDK1, CDK2, CDK3.\n\nfor orth in result['orthologs']:\n    print(f\"  {orth['target_gene']} ({orth['target_id']}) - {orth['confidence']} confidence [{orth['data_source']}]\")\n\n# Check functional complementation evidence\nfor comp in result['complementation'][:3]:\n    print(f\"  Complementation: {comp['human_gene']} {comp['direction']} (PMID:{comp['reference_pmid']})\")"
+            },
+            {
+                "description": "Find human orthologs using systematic name",
+                "code": "result = find_human_orthologs_for_yeast_gene('YDL185W')  # VMA1\nprint(f\"Gene: {result['yeast_info']['gene_name']}\")  # VMA1\nfor orth in result['orthologs']:\n    print(f\"  {orth['target_gene']} - {orth['data_source']}\")\n# Output: ATP6V1A - SGD+PomBase_triangulated (cross-validated!)"
+            }
+        ]
+    },
+    {
+        "name": "find_yeast_orthologs_for_human_gene",
+        "type": "tool",
+        "description": "Reverse cross-species ortholog mapping from human to model organism. Given a human gene symbol, identifies the corresponding Saccharomyces cerevisiae (budding yeast) ortholog(s). Useful for connecting human disease genes or drug targets back to experimentally tractable yeast models. Uses PomBase triangulated mapping (human → S. pombe → S. cerevisiae) with SGD validation. Automatically resolves gene symbols to HGNC identifiers for cross-database matching.",
+        "import_path": "from medea.tool_space.yeast_human_orthologs import find_yeast_orthologs_for_human_gene",
+        "input_params": [
+            {"name": "human_gene", "type": "str", "description": "Human gene symbol (e.g., 'CDK1', 'BRCA1', 'TP53', 'RAD51')"},
+            {"name": "include_pombase", "type": "bool", "description": "Whether to include PomBase triangulated orthologs (default: True)"}
+        ],
+        "return_type": "dict",
+        "returns": "Dictionary with keys: success (bool), human_gene (str), orthologs (list of dicts with target_gene=yeast_name, target_id=yeast_systematic, confidence, data_source), num_orthologs (int), data_sources_used (list), summary (str).",
+        "code_example": {
+            "description": "Find yeast orthologs for human CDK1",
+            "code": "from medea.tool_space.yeast_human_orthologs import find_yeast_orthologs_for_human_gene\n\nresult = find_yeast_orthologs_for_human_gene('CDK1')\nprint(f\"Summary: {result['summary']}\")\n# Output: Found 1 yeast ortholog(s) for human gene CDK1: CDC28.\n\nfor orth in result['orthologs']:\n    print(f\"  {orth['target_gene']} ({orth['target_id']}) - {orth['confidence']} [{orth['data_source']}]\")"
+        }
+    },
+    {
+        "name": "find_yeast_human_complementation",
+        "type": "tool",
+        "description": "Retrieves experimentally validated functional complementation evidence between Saccharomyces cerevisiae and human genes from SGD. Complementation data represents the gold standard for cross-species functional conservation — it documents cases where one organism's gene can rescue loss-of-function of its ortholog in the other organism in vivo. Each record includes the direction of complementation, strain background, curator-annotated experimental details, and PubMed references. Particularly valuable for assessing translational relevance of yeast genetic findings.",
+        "import_path": "from medea.tool_space.yeast_human_orthologs import find_yeast_human_complementation",
+        "input_params": [
+            {"name": "yeast_gene", "type": "str", "description": "Yeast gene name (standard or systematic)"}
+        ],
+        "return_type": "dict",
+        "returns": "Dictionary with keys: success (bool), yeast_gene (str), complementation_pairs (list of dicts with yeast_gene, human_gene, human_gene_id, direction, strain_background, details, reference_pmid, source), num_pairs (int), summary (str).",
+        "code_example": {
+            "description": "Find functional complementation data for CDC28",
+            "code": "from medea.tool_space.yeast_human_orthologs import find_yeast_human_complementation\n\nresult = find_yeast_human_complementation('CDC28')\nprint(f\"Found {result['num_pairs']} complementation pairs\")\nfor pair in result['complementation_pairs'][:3]:\n    print(f\"  {pair['yeast_gene']} <-> {pair['human_gene']} | {pair['direction']} | PMID:{pair['reference_pmid']}\")\n    print(f\"    Details: {pair['details'][:100]}...\")"
+        }
+    },
+    {
+        "name": "get_yeast_gene_info",
+        "type": "tool",
+        "description": "Retrieves curated gene annotation for any Saccharomyces cerevisiae gene from the Saccharomyces Genome Database (SGD), the authoritative reference for budding yeast genomics. Returns functional description, systematic name, gene type (ORF, tRNA, etc.), verification status, cross-species aliases, and a direct SGD URL. Useful as a first step to understand what a yeast gene does before further analysis, or to resolve gene name ambiguities.",
+        "import_path": "from medea.tool_space.yeast_human_orthologs import get_yeast_gene_info",
+        "input_params": [
+            {"name": "yeast_gene", "type": "str", "description": "Yeast gene name - standard (e.g., 'RAD51') or systematic (e.g., 'YER095W')"}
+        ],
+        "return_type": "dict",
+        "returns": "Dictionary with keys: success (bool), gene_info (dict with gene_name, systematic_name, sgd_id, description, gene_type, qualifier, go_annotations, aliases, url), url (str).",
+        "code_example": {
+            "description": "Get information about yeast RAD51 gene",
+            "code": "from medea.tool_space.yeast_human_orthologs import get_yeast_gene_info\n\nresult = get_yeast_gene_info('RAD51')\nif result['success']:\n    info = result['gene_info']\n    print(f\"Gene: {info['gene_name']} ({info['systematic_name']})\")\n    print(f\"Type: {info['gene_type']} - {info['qualifier']}\")\n    print(f\"Description: {info['description'][:150]}...\")\n    print(f\"SGD URL: {info['url']}\")"
+        }
+    },
+    {
+        "name": "batch_yeast_to_human_mapping",
+        "type": "tool",
+        "description": "Batch version of find_human_orthologs_for_yeast_gene — maps a list of Saccharomyces cerevisiae genes to their human orthologs in a single call. Designed for processing output from yeast genetic screens (synthetic lethality, chemical-genetic profiling, fitness assays, deep mutational scanning) where many gene hits need to be translated to human context simultaneously. Returns per-gene results and aggregate statistics. NOTE: ~5-10 seconds per gene due to SGD API calls.",
+        "import_path": "from medea.tool_space.yeast_human_orthologs import batch_yeast_to_human_mapping",
+        "input_params": [
+            {"name": "yeast_genes", "type": "list[str]", "description": "List of yeast gene names to map (e.g., ['RAD51', 'CDC28', 'TUB1'])"},
+            {"name": "include_pombase", "type": "bool", "description": "Whether to include PomBase triangulated orthologs (default: True)"}
+        ],
+        "return_type": "dict",
+        "returns": "Dictionary with keys: success (bool), total_genes_queried (int), genes_with_human_orthologs (int), total_ortholog_mappings (int), results (dict with per-gene results keyed by gene name), summary (str).",
+        "code_example": {
+            "description": "Batch map a list of yeast genes from a synthetic lethality screen",
+            "code": "from medea.tool_space.yeast_human_orthologs import batch_yeast_to_human_mapping\n\nyeast_hits = ['RAD51', 'CDC28', 'TUB1', 'ACT1', 'SSA1']\nresult = batch_yeast_to_human_mapping(yeast_hits, include_pombase=True)\nprint(f\"Summary: {result['summary']}\")\n# Output: Mapped 5/5 yeast genes to 20 human orthologs.\n\nfor gene, res in result['results'].items():\n    if res.get('success') and res.get('num_orthologs', 0) > 0:\n        orthologs = [o['target_gene'] for o in res['orthologs']]\n        print(f\"  {gene} -> {', '.join(orthologs[:5])}\")"
+        }
     },
     {
         "name": "numpy",

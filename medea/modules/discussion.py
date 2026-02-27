@@ -137,9 +137,15 @@ def reconcile_votes_with_llm(certainty_vote: dict, query: str, max_attempts: int
     
     original_vote = certainty_vote.copy()
     model_name = os.getenv("BACKBONE_LLM", "gpt-4o")
-    use_json_mode = "gpt" in model_name.lower() or "openai" in model_name.lower()
+    # Only use JSON mode for models that support response_format (not o-series or gpt-5)
+    _no_json_mode = ('o1' in model_name or 'o3' in model_name or 'o4' in model_name
+                     or 'gpt-5' in model_name)
+    use_json_mode = not _no_json_mode and (
+        "gpt" in model_name.lower() or "openai" in model_name.lower()
+    )
     
     for attempt_num in range(1, max_attempts + 1):
+        output = None
         try:
             # Prepare prompt
             safe_query = sanitize_prompt_content(str(query))
@@ -163,6 +169,11 @@ def reconcile_votes_with_llm(certainty_vote: dict, query: str, max_attempts: int
             # Parse the output
             parsed_vote = parse_llm_dict_output(output)
             
+            # Handle nested {"normalized_votes": {...}} format from JSON mode
+            if parsed_vote and isinstance(parsed_vote, dict):
+                if "normalized_votes" in parsed_vote and isinstance(parsed_vote["normalized_votes"], dict):
+                    parsed_vote = parsed_vote["normalized_votes"]
+            
             # Validate parsed result
             if parsed_vote and isinstance(parsed_vote, dict) and len(parsed_vote) > 0:
                 # Ensure all values are numeric
@@ -170,18 +181,21 @@ def reconcile_votes_with_llm(certainty_vote: dict, query: str, max_attempts: int
                     print(f"[Vote Reconciliation] ✓ Successfully reconciled on attempt {attempt_num}", flush=True)
                     return parsed_vote
                 else:
-                    raise ValueError("Non-numeric values in dictionary")
+                    non_numeric = {k: type(v).__name__ for k, v in parsed_vote.items() if not isinstance(v, (int, float))}
+                    raise ValueError(f"Non-numeric values in dictionary: {non_numeric}")
             else:
                 raise ValueError("Failed to parse valid dictionary")
                 
         except Exception as e:
             if attempt_num < max_attempts:
-                print(f"[Vote Reconciliation] Attempt {attempt_num} failed: {str(e)[:80]}", flush=True)
-                # Add debug logging for development
-                if os.getenv("MEDEA_DEBUG", "").lower() == "true":
-                    print(f"[Debug] LLM output: {output[:300]}", flush=True)
+                print(f"[Vote Reconciliation] Attempt {attempt_num} failed: {str(e)[:120]}", flush=True)
+                # Always show LLM output on failure for easier debugging
+                if output:
+                    print(f"[Vote Reconciliation] LLM output preview: {str(output)[:300]}", flush=True)
             else:
                 print(f"[Vote Reconciliation] All attempts failed. Using original votes.", flush=True)
+                if output:
+                    print(f"[Vote Reconciliation] Last LLM output: {str(output)[:300]}", flush=True)
                 if os.getenv("MEDEA_DEBUG", "").lower() == "true":
                     print(f"[Debug] Final output: {output[:400]}", flush=True)
     
@@ -287,16 +301,21 @@ def parse_output(tmp, query, rounds, vote_merge=True, attempt=4):
         
     for o in [c, g, b]:
         if o+r in tmp:
-            # Ensure tmp[o+r] is a dictionary and has the expected structure
             if isinstance(tmp[o+r], dict) and 'answer' in tmp[o+r]:
                 tmp[o+"_pred_"+str(rounds)] = tmp[o+r]['answer']
-                tmp[o+"_exp_"+str(rounds)] = f"I think the answer is {tmp[o+r]['answer']} because {tmp[o+r]['reasoning']} My confidence level is {tmp[o+r]['confidence_level']}." 
+                evidence_basis = tmp[o+r].get('evidence_basis', 'unknown')
+                tmp[o+"_eb_"+str(rounds)] = evidence_basis
+                tmp[o+"_exp_"+str(rounds)] = (
+                    f"Answer: {tmp[o+r]['answer']} | "
+                    f"Evidence basis: {evidence_basis} | "
+                    f"Confidence: {tmp[o+r]['confidence_level']} | "
+                    f"Reasoning: {tmp[o+r]['reasoning']}"
+                )
                 if tmp[o+r]['answer'] not in certainty_vote:
                     certainty_vote[tmp[o+r]['answer']] = trans_confidence(tmp[o+r]['confidence_level']) + 1e-5
                 else:
                     certainty_vote[tmp[o+r]['answer']] += trans_confidence(tmp[o+r]['confidence_level'])
             else:
-                # Handle the case where tmp[o+r] is not a dictionary or lacks expected keys
                 print(f"Warning: {o+r} is not structured as expected: {tmp[o+r]}")
 
     if c+r in tmp and g+r in tmp and b+r in tmp:
@@ -318,12 +337,25 @@ def parse_output(tmp, query, rounds, vote_merge=True, attempt=4):
 
         tmp['majority_ans_'+str(rounds)] = vote[0][0]
         if len(vote) > 1: # not all the agents give the same answer
+            # Present each viewpoint neutrally without revealing vote counts
+            # to avoid social conformity pressure
+            view_num = 0
             for v in vote:
-                tmp['debate_prompt_'+str(rounds)] += f"There are {v[1]} agents think the answer is {v[0]}. "
+                view_num += 1
                 exp_index = find_idx_by_element(tmp['vote_'+str(rounds)], v[0])
                 group_exp = find_element_by_indices(tmp['exps_'+str(rounds)], exp_index)
-                exp = "\n".join(["One agent solution: " + g for g in group_exp])
-                tmp['debate_prompt_'+str(rounds)] += exp + "\n\n"
+                exp = "\n".join(["Supporting argument: " + g for g in group_exp])
+                tmp['debate_prompt_'+str(rounds)] += (
+                    f"Viewpoint {view_num}: \"{v[0]}\"\n{exp}\n\n"
+                )
+            tmp['debate_prompt_'+str(rounds)] += (
+                "Critically evaluate ALL viewpoints above. Consider: "
+                "What evidence supports each view? What evidence contradicts it? "
+                "Pay attention to each argument's evidence basis — arguments grounded in "
+                "empirical or literature evidence should carry more weight than those based on "
+                "backbone or own_knowledge. "
+                "If you change your answer, explain what specific argument convinced you."
+            )
                     
     return tmp
 
@@ -356,7 +388,8 @@ def clean_output(tmp, rounds):
     return tmp
 
 def prepare_context_for_chat_assistant(query, convincing_samples=None, intervene=False):
-    contexts = []
+    contexts = [{"role": "system", "content": PANEL_SYSTEM_PROMPT}]
+
     if convincing_samples:
         for cs in convincing_samples:
             contexts.append({"role": "user", "content": f"User Query: {cs['train_sample']['question']}"})
@@ -367,21 +400,49 @@ def prepare_context_for_chat_assistant(query, convincing_samples=None, intervene
     else:
         contexts.append({"role": "user", "content": f"User Query: {query}"})
         
-    contexts[-1]["content"] += " Analyze the evidence and provide a clear, concise answer with supporting reasoning. If evidence is insufficient, state limitations explicitly."
-    contexts[-1]["content"] += " Include confidence level (0.0-1.0) based on evidence quality."
+    contexts[-1]["content"] += (
+        " Analyze the evidence from all sources. Follow the evidence hierarchy and confidence calibration "
+        "guidelines from your system instructions. Label the source of each key claim in your reasoning."
+    )
     
-    # Concise JSON format instructions to reduce token usage
-    safe_json_format = "Output in JSON format: {'reasoning': 'brief_reasoning', 'answer': 'your_answer', 'confidence_level': (0.0-1.0)}. Keep response under 1000 tokens."
-    contexts[-1]["content"] += " " + safe_json_format
+    safe_json_format = (
+        " Output in JSON format: {'reasoning': 'step_by_step_reasoning_with_source_labels', "
+        "'answer': 'your_answer', 'confidence_level': (0.0-1.0), "
+        "'evidence_basis': 'empirical|literature|backbone|own_knowledge|insufficient'}. "
+        "Keep response under 1000 tokens."
+    )
+    contexts[-1]["content"] += safe_json_format
     
-    # Sanitize the final content
     contexts[-1]["content"] = sanitize_prompt_content(contexts[-1]["content"])
     
     return contexts
 
 
+def _extract_answer_from_plaintext(text):
+    """
+    Fallback: extract a structured answer from plain-text LLM output
+    when the model fails to produce valid JSON. This is a general recovery
+    mechanism for models that don't reliably follow JSON format instructions.
+    """
+    text = text.strip()
+    # Try to find any JSON-like structure in the text (even partial)
+    json_match = re.search(r'\{[^{}]*(?:\{[^{}]*\}[^{}]*)*\}', text)
+    if json_match:
+        result = parse_json(json_match.group())
+        if result != "ERR_SYNTAX":
+            return result
+    
+    # Last resort: use the raw text as the answer with low confidence
+    return {
+        'reasoning': text[:500] if len(text) > 500 else text,
+        'answer': text[:300] if len(text) > 300 else text,
+        'confidence_level': 0.3  # Low confidence since format was wrong
+    }
+
+
 def gpt_gen_ans(query, model='gpt-4o', attempts=3, convincing_samples=None, additional_instruc=None, intervene=False):
     i = 0
+    last_output = None
     while i < attempts:
         try:
             contexts = prepare_context_for_chat_assistant(query, convincing_samples, intervene)
@@ -391,12 +452,10 @@ def gpt_gen_ans(query, model='gpt-4o', attempts=3, convincing_samples=None, addi
                 contexts[-1]['content'] += " " + " ".join(safe_additional_instruc)
                 # Apply final sanitization to the complete content
                 contexts[-1]['content'] = sanitize_prompt_content(contexts[-1]['content'])
-            # print(contexts)
             output = chat_completion(contexts, model=model, mod='dialog')
-            # print(output, flush=True)
             if output:
+                last_output = output
                 if "{" not in output or "}" not in output:
-                    print(output)
                     raise ValueError("cannot find { or } in the model output.")
                 result = parse_json(output)
                 if result == "ERR_SYNTAX":
@@ -404,12 +463,18 @@ def gpt_gen_ans(query, model='gpt-4o', attempts=3, convincing_samples=None, addi
             return result
         except Exception as e:
             print(f"[Retrying - {model}]: {e}")
-            time.sleep(5) # wait for 10 seconds
+            time.sleep(5)
             if "Incapsula_Resource" in str(e):
                 print("Incapsula Resource Error, retrying...")
                 print(f"[gpt_gen_ans] Prompt blocked by Incapsula:\n {contexts}")
                 raise Exception(f"Incapsula Resource Error. Agent terminated: {e}")
             i += 1
+    
+    # All attempts failed: try to recover answer from last raw output
+    if last_output:
+        print(f"[gpt_gen_ans] All {attempts} JSON attempts failed for {model}. Extracting from plain text.", flush=True)
+        return _extract_answer_from_plaintext(last_output)
+    
     return {'reasoning': "None", "answer": "I can not help with this.", "confidence_level": 0.0}
     
 
@@ -419,15 +484,26 @@ def llm_debate(query, tmp, rounds, model_name='gpt-4o', llm_name='llm_0', convin
 
     if f'{llm_name}_output_'+str(rounds) not in tmp and 'debate_prompt'+ r in tmp and len(tmp['debate_prompt'+r]):
         print("Debate")
-        additional_instruc = ["\n\nCarefully review the following solutions from other agents as additional information, and provide your own answer and step-by-step reasoning to the question."]
-        additional_instruc.append("Clearly states that which pointview do you agree or disagree and why.\n\n")
+        additional_instruc = [
+            "\n\nBelow are different viewpoints from other panelists. "
+            "Critically evaluate each viewpoint based on the EVIDENCE presented, not on how many panelists hold that view. "
+            "Pay attention to each viewpoint's evidence_basis — viewpoints backed by empirical/literature evidence "
+            "deserve more weight than those based on backbone or own_knowledge. "
+            "Provide your own independent answer and step-by-step reasoning."
+        ]
+        additional_instruc.append(
+            "Clearly state which viewpoint you agree or disagree with and WHY, citing specific evidence. "
+            "If no strong empirical evidence supports any viewpoint, say so and assign low confidence.\n\n"
+        )
         
-        # Sanitize the debate prompt content before adding it
         sanitized_debate_prompt = sanitize_prompt_content(tmp['debate_prompt'+r])
         additional_instruc.append(sanitized_debate_prompt)
         
-        # Use safer JSON format instructions
-        safe_json_instruction = "Output your answer in JSON format using this structure: {'reasoning': 'your_reasoning', 'answer': 'your_answer', 'confidence_level': 'numeric_value'}. Use single quotes for the JSON structure."
+        safe_json_instruction = (
+            "Output your answer in JSON format: {'reasoning': 'your_reasoning_with_source_labels', "
+            "'answer': 'your_answer', 'confidence_level': numeric_value, "
+            "'evidence_basis': 'empirical|literature|backbone|own_knowledge|insufficient'}."
+        )
         additional_instruc.append(safe_json_instruction)
         
         result = gpt_gen_ans(query,
@@ -465,53 +541,146 @@ def multi_round_discussion(
     tmp = {}
     debate_query = query
     code_snippet = executed_output = reasoning_output = "None"
+    llm_hypothesis = ""
+    experiment_hypothesis = ""
+    literature_hypothesis = ""
+    coding_failed = False
+    reasoning_failed = False
 
     if mod == "diff_context":
         if isinstance(coding_response, dict):
             code_snippet = coding_response.get("code_snippet", "None")
             executed_output = coding_response.get("executed_output") or "None"
 
+        reasoning_citation = "None"
         if isinstance(reasoning_response, dict):
             reasoning_dict = reasoning_response.get("user_query", {})
             if isinstance(reasoning_dict, dict):
                 reasoning_output = reasoning_dict.get("answer") or "None"
+                reasoning_citation = reasoning_dict.get("citation") or "None"
 
         # Sanitize all input content before processing
         safe_proposal = sanitize_prompt_content(str(proposal_response))
         safe_code_snippet = sanitize_prompt_content(str(code_snippet))
         safe_executed_output = sanitize_prompt_content(str(executed_output))
         safe_reasoning_output = sanitize_prompt_content(str(reasoning_output))
-
-        # Normalize the hypothesis proposed by agent into a unified context length
-        experiment_hypothesis = (
-            f"[Coding Agent] Proposal:\n{safe_proposal}\n"
-            f"[Coding Agent] Code Snippet:\n{safe_code_snippet}\n"
-            f"[Coding Agent] Output:\n{safe_executed_output}"
-        )
-        literature_hypothesis = f"[Reasoning Agent] Output:\n{safe_reasoning_output}"
-        
-        # Combine hypotheses generated by different agents into a single output
+        safe_reasoning_citation = sanitize_prompt_content(str(reasoning_citation))
         safe_query = sanitize_prompt_content(str(query))
-        coding_hypothesis = HYPOTHESOS_NORMALIZER.format(user_query=safe_query, agent_hypo=experiment_hypothesis)
-        reasoning_hypothesis = HYPOTHESOS_NORMALIZER.format(user_query=safe_query, agent_hypo=literature_hypothesis)
-        agents_ans = "[Coding Agent] Output:\n " + coding_hypothesis + '\n\n' + '[Reasoning Agent] Output:\n ' + reasoning_hypothesis
-        
 
+        # --- Evidence grading: detect agent success/failure before normalization ---
+        def _is_agent_failed(output_str):
+            """
+            Check if an agent output indicates failure or abstention.
+            A negative finding ('no papers found') is NOT a failure — it's valid evidence.
+            Only true failures (None, error, crash) count as failed.
+            """
+            low = output_str.lower().strip()
+            # Exact match for empty/null outputs
+            if low in ("none", "null", "", "failed"):
+                return True
+            # Explicit failure patterns
+            _hard_fail_patterns = [
+                "i cannot help",
+                "agent could not complete",
+                "call budget exceeded",
+                "error:",
+                "traceback",
+            ]
+            return any(pat in low for pat in _hard_fail_patterns)
+        
+        coding_failed = _is_agent_failed(safe_executed_output)
+        reasoning_failed = _is_agent_failed(safe_reasoning_output)
+
+        # Build raw hypothesis text for each agent
+        experiment_hypothesis = (
+            f"[Analysis Agent] Proposal:\n{safe_proposal}\n"
+            f"[Analysis Agent] Code Snippet:\n{safe_code_snippet}\n"
+            f"[Analysis Agent] Output:\n{safe_executed_output}"
+        )
+        literature_hypothesis = f"[Literature Reasoning Agent] Output:\n{safe_reasoning_output}"
+        if safe_reasoning_citation != "None":
+            literature_hypothesis += f"\n[Literature Reasoning Agent] Citations:\n{safe_reasoning_citation}"
+
+        # Only normalize through HYPOTHESOS_NORMALIZER if agent succeeded;
+        # failed/abstained outputs get explicit labels instead of speculative normalization
+        if coding_failed:
+            coding_hypothesis = (
+                "[Analysis Agent] [STATUS: FAILED/ABSTAINED] "
+                "The analysis agent could not produce results. No empirical evidence from this agent."
+            )
+            print("[Evidence Grading] Analysis agent: FAILED/ABSTAINED", flush=True)
+        else:
+            coding_hypothesis = HYPOTHESOS_NORMALIZER.format(user_query=safe_query, agent_hypo=experiment_hypothesis)
+        
+        if reasoning_failed:
+            reasoning_hypothesis = (
+                "[Literature Reasoning Agent] [STATUS: FAILED/ABSTAINED] "
+                "The literature reasoning agent found no relevant papers or could not complete analysis. "
+                "No literature evidence from this agent."
+            )
+            print("[Evidence Grading] Literature reasoning agent: FAILED/ABSTAINED", flush=True)
+        else:
+            reasoning_hypothesis = HYPOTHESOS_NORMALIZER.format(user_query=safe_query, agent_hypo=literature_hypothesis)
+
+        # Evidence from computational agents
+        agents_ans_for_panel = (
+            "[Analysis Agent] Output:\n " + coding_hypothesis + '\n\n'
+            + '[Literature Reasoning Agent] Output:\n ' + reasoning_hypothesis
+        )
+        
+        # Full evidence including backbone
+        agents_ans = agents_ans_for_panel
+        
         if include_llm:
             print(f"----- Hypothesis from Backbone LLM: {os.getenv('BACKBONE_LLM')} -----", flush=True)
-            llm_hypothesis = chat_completion(safe_query, model=os.getenv("BACKBONE_LLM"))
+            backbone_query = BACKBONE_QUERY_PROMPT.format(query=safe_query)
+            llm_hypothesis = chat_completion(backbone_query, model=os.getenv("BACKBONE_LLM"))
             safe_llm_hypothesis = sanitize_prompt_content(str(llm_hypothesis))
-            backbone_hypothesis = HYPOTHESOS_NORMALIZER.format(user_query=safe_query, agent_hypo=safe_llm_hypothesis)
+            backbone_hypothesis = BACKBONE_NORMALIZER.format(user_query=safe_query, agent_hypo=safe_llm_hypothesis)
             print(f"{llm_hypothesis}\n", flush=True)
-            agents_ans += '\n\n' + '[LLM]:\n' + backbone_hypothesis
+            # Backbone hypothesis is shared with both panelists and formulator as an evidence source
+            agents_ans += '\n\n' + '[LLM Backbone] Output:\n' + backbone_hypothesis
+            agents_ans_for_panel += '\n\n' + '[LLM Backbone] Output:\n' + backbone_hypothesis
         
-        # Build the debate query safely
+        # --- Uncertainty metadata for panelists ---
+        evidence_note = ""
+        if coding_failed and reasoning_failed:
+            evidence_note = (
+                "\n\n[EVIDENCE NOTE] WARNING: Both the analysis agent and literature reasoning agent "
+                "FAILED to produce results. The hypotheses below are based on general LLM knowledge only, "
+                "NOT on empirical evidence. Assign appropriately LOW confidence to your answer."
+            )
+        elif coding_failed or reasoning_failed:
+            failed_agent = "analysis agent" if coding_failed else "literature reasoning agent"
+            evidence_note = (
+                f"\n\n[EVIDENCE NOTE] The {failed_agent} FAILED to produce results. "
+                f"Only partial agent evidence is available. Consider this limitation in your confidence level."
+            )
+        
+        # --- Evidence Auditor: cross-source analysis before panel ---
+        audit_report = ""
+        if include_llm:
+            print("----- Evidence Auditor: cross-source analysis -----", flush=True)
+            auditor_model = os.getenv("AUDITOR_LLM", "gpt-4.1-mini")
+            audit_prompt = EVIDENCE_AUDITOR_PROMPT.format(
+                query=safe_query,
+                coding_output=coding_hypothesis,
+                reasoning_output=reasoning_hypothesis,
+                backbone_output=backbone_hypothesis,
+            )
+            audit_report = chat_completion(audit_prompt, model=auditor_model, temperature=0)
+            audit_report = sanitize_prompt_content(str(audit_report))
+            print(f"{audit_report}\n", flush=True)
+
+        # Build the debate query for panelists
         debate_query_parts = [
             sanitize_prompt_content(str(query)),
-            "Hypothesis from Agents:",
-            "",
-            sanitize_prompt_content(agents_ans)
+            "\nEvidence from Agents and LLM Backbone:",
+            evidence_note,
+            sanitize_prompt_content(agents_ans_for_panel),
         ]
+        if audit_report:
+            debate_query_parts.append("\n[Evidence Audit Report]\n" + audit_report)
         debate_query = "\n".join(debate_query_parts)
 
     # Phase1: Initial round for pannel discussion
@@ -534,20 +703,61 @@ def multi_round_discussion(
         tmp = clean_output(tmp, r)
         tmp = parse_output(tmp, query, r, vote_merge=vote_merge)
     
-    # Find keys that start with 'majority_ans_' and extract the highest suffix
-    # print([key for key in tmp])
+    # Find keys that start with 'weighted_max_' and extract the highest suffix
     majority_keys = [key for key in tmp if key.startswith("weighted_max_")]
     if majority_keys:
-        # Sort the keys by their numeric suffix
         majority_keys_sorted = sorted(majority_keys, key=lambda x: int(x.split('_')[-1]))
-        # Get the last one (highest suffix)
         last_majority_key = majority_keys_sorted[-1]
-        hyp_response = tmp[last_majority_key]
+        panel_conclusion = tmp[last_majority_key]
+    else:
+        panel_conclusion = "No panel conclusion available."
     
-    original_ans = experiment_hypothesis + "\n" + literature_hypothesis + "\n" + llm_hypothesis
-    hypo_prompt = HYPOTHESIS_FORMULATOR.format(query=query, answer=hyp_response, agent_ans=original_ans)
-    hyp_response = chat_completion(hypo_prompt, model=os.getenv("BACKBONE_LLM"))
+    # --- Uncertainty propagation: check average panelist confidence ---
+    # If both agents failed AND average panelist confidence is low, flag as insufficient evidence
+    last_round = round  # the last debate round number
+    avg_confidence = 0.0
+    confidence_count = 0
+    for panelist_id in ["llm_0", "llm_1", "llm_2"]:
+        output_key = f"{panelist_id}_output_{last_round}"
+        if output_key in tmp and isinstance(tmp[output_key], dict):
+            conf = tmp[output_key].get('confidence_level', 0.0)
+            try:
+                avg_confidence += float(conf)
+                confidence_count += 1
+            except (ValueError, TypeError):
+                pass
+    if confidence_count > 0:
+        avg_confidence /= confidence_count
+    
+    # Check if both agents failed (variable from evidence grading above)
+    both_agents_failed = (mod == "diff_context" and coding_failed and reasoning_failed)
+    
+    if both_agents_failed and avg_confidence < 0.5:
+        print(
+            f"[Uncertainty Propagation] Both agents failed + avg panelist confidence={avg_confidence:.2f} < 0.5. "
+            f"Marking output as insufficient evidence.",
+            flush=True
+        )
+        panel_conclusion = (
+            "Insufficient evidence: both the analysis agent and literature reasoning agent failed to produce results. "
+            "The panel discussion was based on general LLM knowledge only, without empirical support. "
+            f"Original panel vote (low confidence {avg_confidence:.2f}): {panel_conclusion}"
+        )
+    
+    # Build agent evidence summary for the formulator
+    original_ans = experiment_hypothesis + "\n\n" + literature_hypothesis
+    if llm_hypothesis:
+        original_ans += "\n\n[LLM Backbone] Output:\n" + llm_hypothesis
+    
+    # Format the faithful-reporter prompt (panel conclusion is anchored as the immutable constraint)
+    hypo_prompt = HYPOTHESIS_FORMULATOR.format(
+        query=query, answer=panel_conclusion, agent_ans=original_ans
+    )
+    
+    # Use a separate formulator model if configured, otherwise use backbone
+    formulator_model = os.getenv("FORMULATOR_LLM", os.getenv("BACKBONE_LLM"))
+    formulated = chat_completion(hypo_prompt, model=formulator_model)
     
     if include_llm:
-        return hyp_response, llm_hypothesis
-    return hyp_response, None
+        return formulated, llm_hypothesis
+    return formulated, None

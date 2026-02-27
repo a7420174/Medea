@@ -12,7 +12,7 @@ from ollama import ChatResponse
 from ollama import chat as OllamaChat
 from openai import AzureOpenAI, OpenAI
 
-from .env_utils import get_env_with_error, get_backbone_llm, get_seed
+from .env_utils import get_env_with_error, get_backbone_llm, get_seed, get_llm_provider
 
 
 def chat_completion(
@@ -22,23 +22,27 @@ def chat_completion(
     mod: str = 'query',
     attempts: int = 3,
     seed: Optional[int] = None,
-    use_openrouter: bool = True,
+    use_openrouter: bool = True,  # Deprecated: use LLM_PROVIDER_NAME env var instead
     response_format: Optional[Dict[str, str]] = None
 ) -> str:
     """
-    Unified chat completion function using OpenRouter as the primary API gateway.
+    Unified chat completion function that routes to the provider specified by LLM_PROVIDER_NAME.
     
-    OpenRouter provides a single endpoint to access 100+ AI models from different providers,
-    handling fallbacks and rate limits automatically. See: https://openrouter.ai/docs/quickstart
+    Supported providers (set via LLM_PROVIDER_NAME env var):
+        - OpenRouter: Routes through OpenRouter unified API (default)
+        - Azure: Uses Azure OpenAI API (AZURE_OPENAI_API_KEY, AZURE_OPENAI_ENDPOINT)
+        - OpenAI: Uses official OpenAI API (OPENAI_API_KEY)
+        - Claude: Uses Anthropic Claude API (ANTHROPIC_API_KEY)
+        - Gemini: Uses Google Gemini API (GEMINI_API_KEY)
     
     Args:
         messages: Either a string prompt or list of message dicts with 'role' and 'content'
         temperature: Sampling temperature (0.0 to 2.0)
-        model: Model identifier (e.g., 'openai/gpt-4o', 'anthropic/claude-3.5-sonnet')
+        model: Model identifier (e.g., 'gpt-4o', 'claude-3-7-sonnet')
         mod: Message mode - 'query' converts string to user message, 'chat' expects list
         attempts: Number of retry attempts on failure
         seed: Random seed for reproducibility
-        use_openrouter: If True, routes through OpenRouter; if False, uses direct APIs
+        use_openrouter: Deprecated - use LLM_PROVIDER_NAME env var instead
         response_format: Optional response format (e.g., {"type": "json_object"} for JSON mode)
         
     Returns:
@@ -50,7 +54,7 @@ def chat_completion(
     """
     # Set default model
     if model is None:
-        model = get_backbone_llm("openai/gpt-4o")
+        model = get_backbone_llm("gpt-4o")
     
     # Initialize seed
     if seed is None:
@@ -60,11 +64,31 @@ def chat_completion(
     if mod == 'query' and isinstance(messages, str):
         messages = [{"role": "user", "content": messages}]
     
-    # Route to appropriate handler
-    # Force legacy handler for certain models that need direct API access
-    if 'deepseek-r1:671b' in model or not use_openrouter:
-        return _legacy_completion(messages, temperature, model, attempts, seed, response_format)
+    # --- Model-specific overrides (always route to their native provider) ---
+    if 'deepseek-r1:671b' in model:
+        return _nvidia_deepseek_completion(messages, temperature, attempts, seed)
+    if model in ['deepseek-r1:70b', 'llama3.3']:
+        return _ollama_completion(messages, model, seed)
+    if 'gemini' in model.lower():
+        return _gemini_completion(messages, temperature, model)
+    if 'claude' in model.lower():
+        return _claude_completion(messages, temperature, model, attempts)
+    
+    # --- Route based on LLM_PROVIDER_NAME (for OpenAI-compatible models) ---
+    provider = get_llm_provider()
+    
+    if provider == "OpenRouter":
+        return _openrouter_completion(messages, temperature, model, attempts, seed, response_format)
+    elif provider == "Azure":
+        return _azure_completion(messages, temperature, model, seed, response_format)
+    elif provider == "OpenAI":
+        return _openai_completion(messages, temperature, model, attempts, seed, response_format)
+    elif provider == "Claude":
+        return _claude_completion(messages, temperature, model, attempts)
+    elif provider == "Gemini":
+        return _gemini_completion(messages, temperature, model)
     else:
+        print(f"[chat_completion] Unknown provider '{provider}', falling back to OpenRouter", flush=True)
         return _openrouter_completion(messages, temperature, model, attempts, seed, response_format)
 
 
@@ -139,14 +163,14 @@ def _openrouter_completion(
             error_str = str(e)
             wait_time = (2 ** attempt) + 1
             
-            print(f"[chat_completion] Attempt {attempt + 1}/{attempts} failed: {error_str[:150]}", flush=True)
+            print(f"[chat_completion] OpenRouter (model={model}) attempt {attempt + 1}/{attempts} failed: {error_str[:150]}", flush=True)
             
             if attempt < attempts - 1:
                 print(f"[chat_completion] Retrying in {wait_time}s...", flush=True)
                 time.sleep(wait_time)
             else:
-                print(f"[chat_completion] All {attempts} attempts exhausted.", flush=True)
-                return f"I cannot help with it - Error: {error_str[:100]}"
+                print(f"[chat_completion] OpenRouter (model={model}) all {attempts} attempts exhausted.", flush=True)
+                return f"I cannot help with it - OpenRouter error (model={model}): {error_str[:100]}"
     
     return "I cannot help with it - All retries failed"
 
@@ -198,38 +222,6 @@ def _model_supports_seed(model: str) -> bool:
     """Check if model supports seed parameter."""
     seed_supported = ["openai/", "anthropic/"]
     return any(provider in model for provider in seed_supported)
-
-
-def _legacy_completion(
-    messages: List[Dict[str, str]],
-    temperature: float,
-    model: str,
-    attempts: int,
-    seed: int,
-    response_format: Optional[Dict[str, str]] = None
-) -> str:
-    """
-    Legacy completion handler for direct API calls (non-OpenRouter).
-    Kept for backward compatibility and special cases.
-    """
-    # Handle NVIDIA DeepSeek models
-    if 'deepseek-r1:671b' in model:
-        return _nvidia_deepseek_completion(messages, temperature, attempts, seed)
-    
-    # Handle Ollama models
-    if model in ['deepseek-r1:70b', 'llama3.3']:
-        return _ollama_completion(messages, model, seed)
-    
-    # Handle Gemini models
-    if 'gemini' in model:
-        return _gemini_completion(messages, temperature, model)
-    
-    # Handle Azure OpenAI models
-    if model in ['o3-mini', 'o3-mini-0131', 'o1-mini-2025-03-01', 'o4-mini-0416']:
-        return _azure_completion(messages, temperature, model, seed, response_format)
-    
-    # Default: treat as Azure
-    return _azure_completion(messages, temperature, model, seed, response_format)
 
 
 def _nvidia_deepseek_completion(
@@ -307,8 +299,8 @@ def _ollama_completion(messages: List[Dict[str, str]], model: str, seed: int) ->
         return content
         
     except Exception as e:
-        print(f"[chat_completion] Ollama error: {e}", flush=True)
-        return "I cannot help with it - Ollama error"
+        print(f"[chat_completion] Ollama error (model={model}): {e}", flush=True)
+        return f"I cannot help with it - Ollama error (model={model})"
 
 
 def _gemini_completion(messages: List[Dict[str, str]], temperature: float, model: str) -> str:
@@ -321,26 +313,50 @@ def _gemini_completion(messages: List[Dict[str, str]], temperature: float, model
         )
         genai.configure(api_key=api_key)
         
-        # Convert to Gemini format
+        # Convert to Gemini format — extract system instructions separately
         gemini_messages = []
+        system_parts = []
         for msg in messages:
             role = msg["role"]
             content = msg["content"]
             
             if role == "system":
-                gemini_messages.append({"role": "system", "content": content})
+                system_parts.append(content)
             elif role == "user":
                 gemini_messages.append({"role": "user", "parts": [{"text": content}]})
             elif role == "assistant":
                 gemini_messages.append({"role": "model", "parts": [{"text": content}]})
         
-        generation_config = genai.types.GenerationConfig(
-            candidate_count=1,
-            temperature=temperature,
-        )
+        system_instruction = "\n\n".join(system_parts) if system_parts else None
         
-        gemini_model = os.getenv("GEMINI_MODEL", "gemini-2.0-flash-exp")
-        model_instance = genai.GenerativeModel(gemini_model, generation_config=generation_config)
+        # Detect if JSON output is expected from the prompt content
+        last_content = messages[-1]["content"] if messages else ""
+        wants_json = any(kw in last_content.lower() for kw in [
+            "json format", "output in json", "'reasoning'", '"reasoning"',
+            "confidence_level", "{'reasoning'"
+        ])
+        
+        gen_config_params = {
+            "candidate_count": 1,
+            "temperature": temperature,
+        }
+        
+        # Force JSON output when detected
+        if wants_json:
+            gen_config_params["response_mime_type"] = "application/json"
+        
+        generation_config = genai.types.GenerationConfig(**gen_config_params)
+        
+        # Use the passed model name if it's a gemini model, otherwise fall back to GEMINI_MODEL env var
+        if 'gemini' in model.lower():
+            gemini_model = model
+        else:
+            gemini_model = os.getenv("GEMINI_MODEL", "gemini-2.0-flash")
+        
+        model_kwargs = {"generation_config": generation_config}
+        if system_instruction:
+            model_kwargs["system_instruction"] = system_instruction
+        model_instance = genai.GenerativeModel(gemini_model, **model_kwargs)
         chat = model_instance.start_chat(history=gemini_messages[:-1] if len(gemini_messages) > 1 else [])
         
         time.sleep(1)  # Rate limiting
@@ -348,8 +364,145 @@ def _gemini_completion(messages: List[Dict[str, str]], temperature: float, model
         return response.text
         
     except Exception as e:
-        print(f"[chat_completion] Gemini error: {e}", flush=True)
-        return "I cannot help with it - Gemini error"
+        # If response_mime_type failed, retry without it
+        if wants_json and "response_mime_type" in str(e):
+            try:
+                gen_config_params.pop("response_mime_type", None)
+                generation_config = genai.types.GenerationConfig(**gen_config_params)
+                retry_kwargs = {"generation_config": generation_config}
+                if system_instruction:
+                    retry_kwargs["system_instruction"] = system_instruction
+                model_instance = genai.GenerativeModel(gemini_model, **retry_kwargs)
+                chat = model_instance.start_chat(history=gemini_messages[:-1] if len(gemini_messages) > 1 else [])
+                time.sleep(1)
+                response = chat.send_message(messages[-1]["content"])
+                return response.text
+            except Exception as retry_e:
+                print(f"[chat_completion] Gemini retry without JSON mode also failed (model={gemini_model}): {retry_e}", flush=True)
+                return f"I cannot help with it - Gemini error (model={gemini_model})"
+        print(f"[chat_completion] Gemini error (model={gemini_model}): {e}", flush=True)
+        return f"I cannot help with it - Gemini error (model={gemini_model})"
+
+
+def _claude_completion(
+    messages: List[Dict[str, str]],
+    temperature: float,
+    model: str,
+    attempts: int,
+) -> str:
+    """Handle Anthropic Claude API completion."""
+    try:
+        api_key = get_env_with_error(
+            "ANTHROPIC_API_KEY",
+            required=True,
+            description="using Anthropic Claude API"
+        )
+        
+        client = anthropic.Anthropic(api_key=api_key)
+        
+        # Separate system message from conversation messages
+        system_msg = None
+        claude_messages = []
+        for msg in messages:
+            if msg["role"] == "system":
+                system_msg = msg["content"]
+            else:
+                claude_messages.append(msg)
+        
+        # If the model name is not a Claude model, use ANTHROPIC_MODEL from env
+        claude_model = model
+        if 'claude' not in model.lower():
+            claude_model = os.getenv("ANTHROPIC_MODEL", "claude-3-7-sonnet-20250219")
+        
+        for attempt in range(attempts):
+            try:
+                request_params = {
+                    "model": claude_model,
+                    "max_tokens": 4096,
+                    "messages": claude_messages,
+                    "temperature": temperature,
+                }
+                if system_msg:
+                    request_params["system"] = system_msg
+                
+                response = client.messages.create(**request_params)
+                return response.content[0].text
+                
+            except Exception as e:
+                wait_time = (2 ** attempt) + 1
+                print(f"[chat_completion] Claude (model={claude_model}) attempt {attempt + 1}/{attempts} failed: {str(e)[:150]}", flush=True)
+                if attempt < attempts - 1:
+                    print(f"[chat_completion] Retrying in {wait_time}s...", flush=True)
+                    time.sleep(wait_time)
+                else:
+                    return f"I cannot help with it - Claude error: {str(e)[:100]}"
+        
+        return "I cannot help with it - All Claude attempts failed"
+        
+    except Exception as e:
+        print(f"[chat_completion] Claude initialization error (model={model}): {e}", flush=True)
+        return f"I cannot help with it - Claude error (model={model}): {str(e)[:100]}"
+
+
+def _openai_completion(
+    messages: List[Dict[str, str]],
+    temperature: float,
+    model: str,
+    attempts: int,
+    seed: int,
+    response_format: Optional[Dict[str, str]] = None
+) -> str:
+    """Handle direct OpenAI API completion (not Azure, not OpenRouter)."""
+    try:
+        api_key = get_env_with_error(
+            "OPENAI_API_KEY",
+            required=True,
+            description="using OpenAI API"
+        )
+        
+        client = OpenAI(api_key=api_key)
+        
+        # Build request params
+        request_params = {
+            "model": model,
+            "messages": messages,
+        }
+        
+        # Models that use max_completion_tokens instead of temperature/seed:
+        # o-series (o1, o3, o4) and gpt-5 series
+        _no_temp_models = ('o1' in model or 'o3' in model or 'o4' in model
+                           or 'gpt-5' in model)
+        
+        if _no_temp_models:
+            # Reasoning models need more tokens (reasoning consumes most of the budget)
+            default_max = 16384 if 'gpt-5' in model else 4096
+            request_params["max_completion_tokens"] = int(os.getenv("MAX_COMPLETION_TOKENS", str(default_max)))
+        else:
+            request_params["temperature"] = temperature
+            request_params["seed"] = seed
+        
+        # Add response_format if provided and supported
+        if response_format and not _no_temp_models:
+            request_params["response_format"] = response_format
+        
+        for attempt in range(attempts):
+            try:
+                response = client.chat.completions.create(**request_params)
+                return response.choices[0].message.content
+            except Exception as e:
+                wait_time = (2 ** attempt) + 1
+                print(f"[chat_completion] OpenAI (model={model}) attempt {attempt + 1}/{attempts} failed: {str(e)[:150]}", flush=True)
+                if attempt < attempts - 1:
+                    print(f"[chat_completion] Retrying in {wait_time}s...", flush=True)
+                    time.sleep(wait_time)
+                else:
+                    return f"I cannot help with it - OpenAI error (model={model}): {str(e)[:100]}"
+        
+        return "I cannot help with it - All OpenAI attempts failed"
+        
+    except Exception as e:
+        print(f"[chat_completion] OpenAI initialization error (model={model}): {e}", flush=True)
+        return f"I cannot help with it - OpenAI error (model={model}): {str(e)[:100]}"
 
 
 def _azure_completion(
@@ -363,11 +516,11 @@ def _azure_completion(
     try:
         # Determine API version
         if 'o1-mini' in model:
-            api_version = os.getenv("O1_MINI_API_VERSION")
+            api_version = os.getenv("O1_MINI_API_VERSION", "2024-12-01-preview")
         elif 'o3-mini' in model:
-            api_version = os.getenv("O3_MINI_API_VERSION")
+            api_version = os.getenv("O3_MINI_API_VERSION", "2024-12-01-preview")
         elif 'o4-mini' in model:
-            api_version = os.getenv("O4_MINI_API_VERSION")
+            api_version = os.getenv("O4_MINI_API_VERSION", "2024-12-01-preview")
         else:
             api_version = get_env_with_error("AZURE_API_VERSION", default="2024-10-21")
         
@@ -382,6 +535,10 @@ def _azure_completion(
             description="connecting to Azure OpenAI endpoint"
         )
         
+        # Ensure endpoint uses https
+        if endpoint.startswith("http://"):
+            endpoint = endpoint.replace("http://", "https://")
+        
         client = AzureOpenAI(
             api_key=api_key,
             api_version=api_version,
@@ -394,21 +551,117 @@ def _azure_completion(
             "messages": messages,
         }
         
-        # Some models don't support temperature or seed
-        if 'o1' not in model and 'o3' not in model and 'o4' not in model:
+        # Models that use max_completion_tokens instead of temperature/seed:
+        # o-series (o1, o3, o4) and gpt-5 series
+        _no_temp_models = ('o1' in model or 'o3' in model or 'o4' in model
+                           or 'gpt-5' in model)
+        
+        if _no_temp_models:
+            # Reasoning models need more tokens (reasoning consumes most of the budget)
+            default_max = 16384 if 'gpt-5' in model else 4096
+            request_params["max_completion_tokens"] = int(os.getenv("MAX_COMPLETION_TOKENS", str(default_max)))
+        else:
             request_params["temperature"] = temperature
             request_params["seed"] = seed
         
         # Add response_format if provided and supported
-        if response_format and 'o1' not in model and 'o3' not in model and 'o4' not in model:
+        if response_format and not _no_temp_models:
             request_params["response_format"] = response_format
         
         response = client.chat.completions.create(**request_params)
         return response.choices[0].message.content
         
     except Exception as e:
-        print(f"[chat_completion] Azure error: {e}", flush=True)
-        return f"I cannot help with it - Azure error: {str(e)[:100]}"
+        print(f"[chat_completion] Azure error (model={model}): {e}", flush=True)
+        return f"I cannot help with it - Azure error (model={model}): {str(e)[:100]}"
+
+
+def web_search_completion(
+    query: str,
+    model: Optional[str] = None,
+    search_context_size: str = "medium",
+) -> str:
+    """
+    Web search-augmented completion using the OpenAI Responses API.
+    
+    Uses `web_search_preview` tool so the model can search the web before answering.
+    Only supported with Azure and OpenAI providers; falls back to chat_completion otherwise.
+    
+    Args:
+        query: The user query / prompt
+        model: Model identifier (e.g. 'gpt-5')
+        search_context_size: Amount of search context — 'low', 'medium', or 'high'
+    """
+    if model is None:
+        model = get_backbone_llm("gpt-4o")
+
+    provider = get_llm_provider()
+
+    try:
+        if provider == "Azure":
+            return _azure_web_search(query, model, search_context_size)
+        elif provider == "OpenAI":
+            return _openai_web_search(query, model, search_context_size)
+        else:
+            print(
+                f"[web_search_completion] Web search not supported for provider '{provider}'. "
+                f"Falling back to chat_completion.",
+                flush=True
+            )
+            return chat_completion(query, model=model)
+    except Exception as e:
+        print(f"[web_search_completion] Failed: {e}. Falling back to chat_completion.", flush=True)
+        return chat_completion(query, model=model)
+
+
+def _responses_api_call(client, model: str, query: str, search_context_size: str) -> str:
+    """Shared Responses API call for web search."""
+    response = client.responses.create(
+        model=model,
+        tools=[{
+            "type": "web_search_preview",
+            "search_context_size": search_context_size,
+        }],
+        input=query,
+    )
+    # Extract text from the Responses API output
+    for item in response.output:
+        if getattr(item, "type", None) == "message":
+            for part in item.content:
+                if getattr(part, "type", None) == "output_text":
+                    return part.text
+    return str(response.output)
+
+
+def _azure_web_search(query: str, model: str, search_context_size: str) -> str:
+    """Azure OpenAI web search via Responses API."""
+    api_key = get_env_with_error(
+        "AZURE_OPENAI_API_KEY", required=True,
+        description="Azure web search"
+    )
+    endpoint = get_env_with_error(
+        "AZURE_OPENAI_ENDPOINT", required=True,
+        description="Azure web search"
+    )
+    if endpoint.startswith("http://"):
+        endpoint = endpoint.replace("http://", "https://")
+    base = endpoint.rstrip("/")
+
+    client = OpenAI(
+        api_key=api_key,
+        base_url=f"{base}/openai/v1/",
+    )
+    return _responses_api_call(client, model, query, search_context_size)
+
+
+def _openai_web_search(query: str, model: str, search_context_size: str) -> str:
+    """OpenAI direct web search via Responses API."""
+    api_key = get_env_with_error(
+        "OPENAI_API_KEY", required=True,
+        description="OpenAI web search"
+    )
+    client = OpenAI(api_key=api_key)
+    return _responses_api_call(client, model, query, search_context_size)
 
 
 def form_ppi_embed_dict(celltype_ppi_embed, celltype_dict, celltype_protein_dict):

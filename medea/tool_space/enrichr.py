@@ -63,12 +63,17 @@ class BaseEnrichrInteractionTool(ABC):
                 time.sleep(2 ** attempt)
     
     def get_official_gene_name(self, gene_name: str) -> str:
-        """Get official gene symbol with insight logging."""
+        """
+        Get official human gene symbol. Only accepts exact symbol matches or
+        case corrections (e.g., tp53 → TP53). Does NOT resolve cross-species
+        aliases (e.g., yeast RAD54 is an alias for human ATRX, but they are
+        different genes in different organisms).
+        """
         if gene_name in self.gene_cache:
             return self.gene_cache[gene_name]
             
         encoded_gene_name = urllib.parse.quote(gene_name)
-        url = f"https://mygene.info/v3/query?q={encoded_gene_name}&fields=symbol,alias&species=human"
+        url = f"https://mygene.info/v3/query?q={encoded_gene_name}&fields=symbol&species=human"
         
         try:
             response = self._rate_limited_request(requests.get, url, timeout=10)
@@ -76,11 +81,10 @@ class BaseEnrichrInteractionTool(ABC):
             hits = data.get("hits", [])
             
             if not hits:
-                self._log(f"Gene '{gene_name}' not found in database - using original name", "WARNING")
-                self.gene_cache[gene_name] = gene_name
-                return gene_name
+                self._log(f"Gene '{gene_name}' not found as human gene symbol", "WARNING")
+                raise ValueError(f"'{gene_name}' is not a recognized human gene symbol")
 
-            # Find exact match
+            # Only accept exact symbol match (case-insensitive)
             for hit in hits:
                 symbol = hit.get("symbol", "")
                 if symbol.upper() == gene_name.upper():
@@ -88,19 +92,10 @@ class BaseEnrichrInteractionTool(ABC):
                         self._log(f"Gene name standardized: {gene_name} → {symbol}")
                     self.gene_cache[gene_name] = symbol
                     return symbol
-                aliases = hit.get("alias", [])
-                if any(gene_name.upper() == alias.upper() for alias in aliases):
-                    self._log(f"Gene alias resolved: {gene_name} → {symbol}")
-                    self.gene_cache[gene_name] = symbol
-                    return symbol
 
-            # Use top hit
-            top_hit = hits[0]
-            symbol = top_hit.get("symbol", gene_name)
-            if symbol != gene_name:
-                self._log(f"Gene name corrected: {gene_name} → {symbol}")
-            self.gene_cache[gene_name] = symbol
-            return symbol
+            # No exact symbol match — input is likely from another organism
+            self._log(f"Gene '{gene_name}' not found as a human gene symbol (note: this checker only validates human genes)", "WARNING")
+            raise ValueError(f"'{gene_name}' is not a recognized human gene symbol")
             
         except Exception as e:
             self._log(f"Gene name resolution failed for '{gene_name}' - proceeding with original", "WARNING")

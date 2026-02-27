@@ -155,11 +155,19 @@ CRITICAL REQUIREMENTS:
   • Keep proposal under 4000 tokens
   • Each step must be clear and executable
 
+✓ FINAL STEP — EVIDENCE SUMMARY (NOT DECISION):
+  • The last step of every proposal must be "Present Evidence Summary"
+  • This step collects and reports what each tool found (or did not find)
+  • Do NOT include a classification, prediction, or decision step
+  • The downstream panel discussion will interpret the evidence and make the final call
+  • The proposal's job is to plan evidence collection, not to plan how to decide
+
 ✗ AVOID:
   • Hallucinated tools not in AVAILABLE_TOOL
   • Redundant or repeated tool calls
   • Vague or ambiguous instructions
   • Assumptions about external data sources
+  • Decision/classification/scoring steps — the code is an evidence collector, not a decision maker
 """
 
 PROPOSAL_QUALITY_TEMPLATE = '''
@@ -218,10 +226,10 @@ EVALUATION CHECKLIST:
   • Expensive tools reserved for final validation
 
 ✓ COMPLETENESS:
-  • Addresses the full user query (potentially with validated alternatives)
   • All feedback points incorporated
-  • No missing steps or logical gaps
+  • Tool calls cover the relevant aspects of the query
   • Under 4000 tokens
+  • Final step should be "Present Evidence Summary" — the proposal collects evidence, NOT makes decisions
 
 ✗ RED FLAGS:
   • Tools not in AVAILABLE_TOOL
@@ -229,6 +237,7 @@ EVALUATION CHECKLIST:
   • Incorrect parameter names/types for the alternatives used
   • Multiple calls to expensive tools
   • Vague instructions that can't be coded
+  • Including a decision/classification/scoring step (the code collects evidence; panel discussion decides)
 
 ═══════════════════════════════════════════════════════════════════════════
 OUTPUT FORMAT (choose ONE, single line only):
@@ -333,9 +342,13 @@ Output (valid Python list only):
 """
 
 
-CODE_GENERATION_TEMPLATE = """You are an expert therapeutic python programmer, well versed in meta-programming and elegant, concise and short but well documented code. You follow the PEP8 style guide. 
-There is no local data available, so do not assume access to any local data. Additionally, avoid using remote URLs, mock data, or mock implementations in the code.
-You can use the proposed summary as a reference if given (no need to follow all), write executable python code that resolves the task following the format instructions provided and print the result.
+CODE_GENERATION_TEMPLATE = """You are an expert python programmer generating analysis code. Follow PEP8 style.
+No local data is available. Do not use remote URLs, mock data, or mock implementations.
+
+YOUR ROLE: EVIDENCE COLLECTOR, NOT DECISION MAKER.
+Your code should use the available tools to gather, organize, and present evidence.
+Do NOT build rule-based decision workflows or hardcode classification logic.
+The downstream system (panel discussion) will interpret the evidence and make the final judgment.
 
 CRITICAL RESOURCE & EFFICIENCY CONSTRAINTS:
 - NEVER use iterative tool calls in loops:
@@ -343,16 +356,6 @@ CRITICAL RESOURCE & EFFICIENCY CONSTRAINTS:
 - Avoid using repetitive verbose output
 - Avoid using excessive API calls
 - No brute-force approaches that call tools for every item in a list
-
-MANDATORY efficient patterns:
-✅ Pre-filter candidates using embeddings/similarity before expensive tool calls
-✅ Analyze only the top 1-2 most promising candidates with comprehensive tools
-✅ Batch multiple items into single tool calls when possible
-✅ Use ranking/scoring systems to prioritize before detailed analysis
-✅ Implement smart filtering strategies to minimize downstream tool usage
-✅ Consolidate related API calls into single operations
-🚨 AVOID expensive compound tools unless absolutely necessary for final results
-🚨 Prefer lightweight analysis tools over reasoning agents for intermediate steps
 
 CRITICAL LOGGING GUIDELINES:
 - Use CONCISE, MEANINGFUL logs that provide insights, not data dumps
@@ -364,25 +367,37 @@ CRITICAL LOGGING GUIDELINES:
 - Suppress verbose library outputs when possible
 - When tools produce verbose output, capture results silently and summarize key findings
 
-EFFICIENT ANALYSIS PATTERNS:
-✅ Pre-filter candidates using embeddings/similarity before detailed analysis
-✅ Analyze only the most promising 1-2 candidates with comprehensive tools
-✅ Use summary functions instead of detailed reports for multiple genes
-✅ Combine multiple criteria into a single scoring system
-✅ Present final rankings with brief justifications
+What your code SHOULD do:
+- Call tools to retrieve relevant data (annotations, interactions, literature, etc.)
+- Clearly print what each tool found or did NOT find
+- Summarize the evidence: what was found, what was not found, and confidence levels from tools
+- Present raw tool outputs and summaries — let the evidence speak for itself
 
-GOOD logging examples:
-✅ print(f"Found {len(target_genes)} target genes for {disease_name}")
-✅ print(f"Computing cosine similarities for {len(candidates)} candidates...")
-✅ print(f"Top candidate: {best_gene} (score: {best_score:.3f})")
-✅ print(f"Patient predicted to respond: {is_responder}")
-✅ print(f"Top 3 immune concepts: {[concept for concept, _ in concepts[:3]]}")
+What your code should NOT do:
+- Build keyword-matching classifiers or rule-based decision trees on tool outputs
+- Hardcode scoring functions, confidence combiners, or classification workflows
+- Draw a final conclusion or make a prediction — that is not your job
+- Infer conclusions from absence of evidence or from general knowledge
 
-BAD logging examples:
-❌ print(f"Target genes: {target_genes}")  # Don't dump full lists
-❌ print(f"Embeddings: {embeddings}")     # Don't dump data structures
-❌ print(f"Raw output: {raw_data}")       # Don't show unprocessed data
-❌ for item in is_responder: ...           # Don't iterate over booleans
+RESOURCE & EFFICIENCY CONSTRAINTS:
+- No iterative tool calls in loops; no brute-force approaches
+- Pre-filter before expensive calls; analyze only top 1-2 candidates
+- Batch tool calls when possible; consolidate related API calls
+- Use expensive tools (e.g., scientific_reasoning_agent) at most once, as final evidence gathering
+
+LOGGING GUIDELINES:
+- Concise, meaningful logs — summarize counts and key findings, not raw data
+- Print FINAL EVIDENCE SUMMARY clearly with what was found and what was not
+
+INTERPRETING TOOL OUTPUTS:
+- Always check if a tool returned "no results" or "insufficient data" BEFORE extracting findings
+- Tool outputs may echo query terms even in negative responses — check the overall conclusion first
+- When tools return no supporting data, report that clearly rather than guessing
+
+CODE LENGTH LIMIT:
+- Do NOT write verbose docstrings, type annotations, or elaborate helper functions.
+- Call tools directly, print what they return, summarize. That's it.
+- One main() function with linear tool calls — no class hierarchies or complex abstractions.
 
 User Query: 
 {user_query}
@@ -393,7 +408,7 @@ Proposed instruction:
 Additional Tool Info:
 {tools}
 
-Output the code snippet only. Reminder to execute the code snippet to verify the code quality
+Output the code snippet wrapped in a ```python code fence. No explanations or additional text outside the code fence.
 """
 
 
@@ -411,39 +426,16 @@ CRITICAL: Output ONLY the fixed code snippet. No explanations or additional text
 DEBUGGER_CHAT_TEMPLATE = '''
 Debug and fix the code snippet. Return ONLY the fixed code.
 
-CRITICAL RESOURCE & EFFICIENCY CONSTRAINTS:
-- NEVER use iterative tool calls in loops:
-- Avoid creating massive function calls in loops
-- Avoid using repetitive verbose output
-- Avoid using excessive API calls
-- No brute-force approaches that call tools for every item in a list
+ROLE: Fix the code so it collects and presents evidence, NOT so it builds a decision workflow.
+- Remove any hardcoded classifiers, scoring functions, or rule-based decision logic
+- The code should gather evidence from tools and present what was found (or not found)
+- Do NOT add classification or prediction logic — that is handled downstream
 
-MANDATORY efficient patterns:
-✅ Pre-filter candidates using embeddings/similarity before expensive tool calls
-✅ Analyze only the top 1-2 most promising candidates with comprehensive tools
-✅ Batch multiple items into single tool calls when possible
-✅ Use ranking/scoring systems to prioritize before detailed analysis
-✅ Implement smart filtering strategies to minimize downstream tool usage
-✅ Consolidate related API calls into single operations
-🚨 AVOID expensive compound tools unless absolutely necessary for final results
-🚨 Prefer lightweight analysis tools over reasoning agents for intermediate steps
-
-CRITICAL LOGGING GUIDELINES:
-- Use CONCISE, MEANINGFUL logs that provide insights, not data dumps
-- AVOID printing large collections, dictionaries, or gene lists in full
-- Use summary statistics instead: "Found 47 target genes" instead of printing all gene names
-- Log PROGRESS and KEY RESULTS, not intermediate data structures
-- Use informative messages: "Computing similarity scores..." instead of raw data
-- Print FINAL RESULTS clearly with proper formatting
-- Suppress verbose library outputs when possible
-- When tools produce verbose output, capture results silently and summarize key findings
-
-EFFICIENT ANALYSIS PATTERNS:
-✅ Pre-filter candidates using embeddings/similarity before detailed analysis
-✅ Analyze only the most promising 1-2 candidates with comprehensive tools
-✅ Use summary functions instead of detailed reports for multiple genes
-✅ Combine multiple criteria into a single scoring system
-✅ Present final rankings with brief justifications
+CONSTRAINTS:
+- Remove unnecessary helpers, docstrings, and abstractions.
+- No iterative tool calls in loops; batch when possible
+- Concise logging — summaries, not data dumps
+- Check for "no results" from tools before extracting findings
 
 ---
 User Query: {user_query}
@@ -694,28 +686,37 @@ Provide succinct, truthful feedback evaluating whether the code snippet accurate
     - Identify and flag any content that is unsupported, fabricated, or potentially misleading, including elements of analysis, parameter usage, or data.
     - Verify that all parameters used in tool or API calls are authentic, verifiable against official tool documentation provided, and not artificially generated or erroneous.
 
+5. Evidence Interpretation:
+    - Code must check whether a tool's output indicates absence/insufficiency of results BEFORE extracting a positive classification from it.
+    - If the code produces a confident conclusion when tools returned no supporting data, this is a [Failed].
 
-Output Format (Return one line only—no extra text—using exactly one of the two patterns below):
 
+Output Format (Return one line only -- no extra text -- using exactly one of these three patterns):
 - [Approved] - <concise rationale>
-- [Failed] - <specific, actionable feedback for improving the code quality in 200 words or less>
+- [Minor] - <non-critical issues noted, but code structure and tool usage are correct>
+- [Failed] - <critical issues: wrong tools, missing required calls, loops, fabricated data, or confident conclusion from absent evidence>
 """
 
 
-QUALITY_ASSURANCE_TEMPLATE = """As an expert in genetics, bioinformatics, and biology, your task is to verify the accuracy and informativeness of the provided code snippet and its output. 
-Assume the environment only has access to the tools and APIs specified in the given instructions. 
-Ensure the code effectively addresses the instruction and does not rely on any random mock data.
+QUALITY_ASSURANCE_TEMPLATE = """As an expert in genetics, bioinformatics, and biology, verify the code snippet and its output.
+Assume the environment only has access to the tools and APIs specified in the given instructions.
 
-RESOURCE EFFICIENCY EVALUATION:
-- Check for absence of iterative tool calls in loops
-- Confirm strategic, selective analysis rather than brute-force approaches
-- Ensure tool calls are batched efficiently and not redundant
+CRITICAL issues (warrant [Failed]):
+- Uses fabricated/mock data instead of real tool calls
+- Missing required tool calls specified in the instruction
+- Iterative tool calls in loops (brute-force)
+- Code execution errors or crashes
+- Uses tools not in the documentation
+- Builds a hardcoded decision workflow (classifiers, scoring functions, rule-based logic) instead of presenting evidence for downstream interpretation
+- Produces a confident conclusion when tools returned no supporting evidence
+- Extracts findings from tool output without first checking if the output indicates absence of results
 
-LOGGING QUALITY EVALUATION:
-- Check if output is clean and insightful (not verbose data dumps)
-- Verify logs show meaningful progress and results, not raw data structures
-- Ensure large collections/dictionaries are summarized, not printed in full
-- Confirm output focuses on key insights and final results
+NON-CRITICAL issues (warrant [Minor] — acceptable, flag for awareness):
+- Verbose or imperfect logging
+- Suboptimal but functional implementation details
+- Missing edge case handling that doesn't affect evidence collection
+- Hardcoded fallback values when tool calls succeed
+- A tool returned an error, rate limit, or budget message — reporting this IS valid evidence (it means "tool unavailable"), not a code failure
 
 User Query:
 {user_query}
@@ -733,10 +734,10 @@ Executed Output:
 {code_output}
 ---
 
-Provide succinct and truthful feedback. Evaluate if the executed result is informative and suitable, including output cleanliness.
-Output Format (Return one line only—no extra text—using exactly one of the two patterns below): 
+Output Format (Return one line only — no extra text — using exactly one of these three patterns):
 - [Approved] - <concise rationale>
-- [Failed] - <specific, actionable feedback for improving the code quality in 200 words or less>
+- [Minor] - <non-critical issues noted for awareness, but code is functional and usable>
+- [Failed] - <critical issues that prevent the code from producing valid results>
 """
 
 
@@ -928,7 +929,7 @@ Reference:
 - Expression stability of common housekeeping genes is differently affected by bowel inflammation and cancer: implications for finding suitable normalizers for inflammatory bowel disease studies. PubMed ID: 24859296. [Link to study](https://pubmed.ncbi.nlm.nih.gov/24859296)
 """
 
-HYPOTHESOS_NORMALIZER = """Please refine and concisely address the user query with the hypothesis proposed by the following Agent in 300 words. 
+HYPOTHESOS_NORMALIZER = """Please refine and concisely address the user query with the hypothesis proposed by the following Agent in 400 words. 
 
 User Query:
 {user_query}
@@ -940,21 +941,139 @@ Agent Hypothesis:
 """
 
 
-HYPOTHESIS_FORMULATOR = """Provide a clear, concise, and logically structured response to answer the user query that synthesizes the insight from the panel discussion and integrating aligned hypotheses from the modules. Ensure your final answer is precise, logically structured, and scientifically rigorous.
+BACKBONE_QUERY_PROMPT = """You are a rigorous biomedical researcher. Answer the following research query with a detailed, evidence-based response.
+
+REQUIREMENTS:
+1. **Evidence First**: Ground every claim in concrete evidence — cite published studies, established databases, or well-documented experimental findings. Do NOT make unsupported assertions. Include references (author, year, PMID/DOI) where possible.
+2. **Logical Chain**: Structure your reasoning step by step:
+   - What is established about the key biological entities in the query?
+   - What evidence connects them to each other or to the queried phenomenon?
+   - What is the mechanistic or functional rationale linking evidence to your conclusion?
+3. **Distinguish Evidence Levels**: Clearly separate:
+   - Direct experimental/clinical evidence (e.g., "Study X demonstrated that...")
+   - Database or computational evidence (e.g., "According to [database]...")
+   - Mechanistic inference based on known biology
+   - Speculation (explicitly label if no supporting evidence exists)
+4. **Acknowledge Gaps**: If direct evidence is lacking, state so explicitly rather than fabricating a confident answer. Briefly note what experiments or data would be needed to resolve the uncertainty.
+
+Research Query:
+{query}
+"""
+
+
+BACKBONE_NORMALIZER = """Refine and concisely address the user query based on the hypothesis below. Preserve ALL evidence, citations, and logical reasoning — do NOT strip references or reduce the answer to bare assertions. Target 400 words.
+
+STRUCTURE YOUR RESPONSE AS:
+1. **Conclusion**: The main answer to the query.
+2. **Key Evidence**: The most important supporting evidence with citations/sources retained.
+3. **Reasoning Chain**: The logical steps from evidence to conclusion.
+4. **Evidence Gaps**: Any acknowledged limitations or missing evidence.
 
 User Query:
+{user_query}
+
+----
+
+Agent Hypothesis:
+{agent_hypo}
+"""
+
+
+PANEL_SYSTEM_PROMPT = """You are a panelist in a scientific expert panel. Your role is to evaluate evidence from multiple sources and reach a well-reasoned conclusion. Follow these principles rigorously.
+
+EVIDENCE HIERARCHY (strongest to weakest):
+1. Empirical evidence from agents: tool outputs, database query results, literature with verifiable citations
+2. Agent negative results: agents that searched thoroughly and found nothing — this IS informative evidence
+3. LLM Backbone hypothesis: generated from language model parametric knowledge — treat as a hypothesis, NOT as evidence. It can hallucinate citations, fabricate experimental results, or assert conclusions without grounding.
+4. Your own knowledge: you may have biases from training data that overlap with the backbone. Be aware of this.
+
+INTERPRETING ABSENCE OF EVIDENCE:
+- If the Analysis Agent and/or Literature Reasoning Agent conducted active searches (queried databases, searched literature, ran pathway analysis) and found NO supporting evidence, this is a meaningful signal. It suggests the queried phenomenon may not be well-established or may not exist.
+- Distinguish between "searched and found nothing" (informative negative — agents actively looked) vs. "tool failed / could not run" (uninformative — no search was attempted).
+- Do NOT fill evidence gaps with speculation or LLM knowledge. Acknowledge the gap.
+
+CROSS-SOURCE VERIFICATION:
+- When sources conflict, reason explicitly about WHY they conflict. Do not resolve conflicts by defaulting to the most confident-sounding source.
+- If the LLM Backbone claims something that agents could not find, this is a red flag. Ask: why couldn't agents with database and literature access verify this claim?
+- Use the Evidence Audit Report (if provided) to identify specific conflicts and unverifiable claims.
+
+CONFIDENCE CALIBRATION:
+- 0.8-1.0: Direct experimental/clinical evidence from agents supports the conclusion
+- 0.5-0.7: Strong indirect evidence or well-corroborated mechanistic reasoning from multiple sources
+- 0.3-0.5: Only LLM Backbone or your own knowledge supports it; no agent corroboration
+- 0.0-0.3: No evidence from any source; pure speculation or all sources abstain/fail
+
+EVIDENCE ATTRIBUTION:
+- In your reasoning, label the source of each key claim: [Analysis Agent], [Literature Reasoning Agent], [LLM Backbone], or [Own Knowledge].
+- Your evidence_basis field must honestly reflect the strongest source supporting your conclusion.
+"""
+
+
+EVIDENCE_AUDITOR_PROMPT = """You are an evidence auditor. Your task is to cross-reference three evidence sources and produce a structured analysis. Be concise and specific.
+
+USER QUERY:
 {query}
 
-Panel Discussion Insight:
+SOURCE 1 — ANALYSIS AGENT (computational analysis, database queries, tool outputs):
+{coding_output}
+
+SOURCE 2 — LITERATURE REASONING AGENT (literature search, peer-reviewed papers):
+{reasoning_output}
+
+SOURCE 3 — LLM BACKBONE (language model hypothesis from parametric knowledge):
+{backbone_output}
+
+Produce the following analysis:
+
+1. SOURCE STATUS
+For each source, classify as one of: [EVIDENCE PROVIDED] / [SEARCHED, FOUND NOTHING] / [FAILED or ABSTAINED]
+
+2. CROSS-SOURCE ALIGNMENT
+- Where do sources AGREE? (list specific claims with source labels)
+- Where do sources CONFLICT? (list specific contradictions — e.g., "Backbone claims X but Analysis Agent found no support for X")
+- Does the Backbone claim anything that neither agent could verify?
+
+3. BACKBONE CREDIBILITY CHECK
+- Are Backbone citations specific (author, year, PMID/DOI) or vague?
+- Does Backbone clearly distinguish direct evidence from inference and speculation?
+- Flag any claims that appear fabricated (confident assertions with zero agent corroboration)
+
+4. EVIDENCE GAPS
+- What key information is missing across all sources?
+- What would be needed to resolve the question with higher confidence?
+
+Keep your analysis under 500 words. Be factual and specific — cite concrete claims from each source.
+"""
+
+
+HYPOTHESIS_FORMULATOR = """Write a concise hypothesis research report that address the user's query. 
+Synthesize the panel discussion conclusion to answer the user's query with the evidence collected by the agents and the LLM backbone.
+
+**User Query:**
+{query}
+
+**Panel Discussion Conclusion:**
 {answer}
 
-Hypotheses from different Agents:
+**Evidence from Agents:**
 {agent_ans}
 
-Key Requirements:
-	•	Evidence-Based: Ensure the response is firmly grounded by evidence in the provided discussion and hypotheses.
-	•	Consistency & Precision: Use relevant hypotheses to enhance coherence and strengthen the response.
-	•	Clarity & Scientific Accuracy: Present the information in a clear, precise, and scientifically valid manner.
+EVIDENCE SOURCES (clearly labeled in the evidence section above):
+- **[Analysis Agent]**: Computational analysis — proposals, code, and executed outputs.
+- **[Literature Reasoning Agent]**: Literature-grounded reasoning with citations from academic papers.
+- **[LLM Backbone]**: Independent answer from the backbone LLM. This is a SEPARATE source from the Literature Reasoning Agent.
+
+REPORT STRUCTURE:
+1. **Conclusion**: State the panel's voted conclusion. Do NOT change or override it.
+2. **Evidence Summary**: Present evidence that supports or explains the panel's voted conclusion. Clearly attribute each piece of evidence to its source (Analysis Agent, Literature Reasoning Agent, or LLM Backbone). Include key data points, tool outputs, confidence levels, and citations. If a source's findings contradict the conclusion, note that as well.
+3. **Mechanistic Context**: If agents provided biological/mechanistic insights, integrate them to explain the reasoning behind the conclusion.
+4. **Limitations**: Note any gaps — which sources failed or abstained, what evidence is missing, and how this affects confidence.
+
+RULES:
+- The conclusion MUST match the panel's voted conclusion. Do NOT reinterpret or override it.
+- Use ONLY evidence present in the agent outputs above. Do NOT add your own knowledge.
+- If the panel concluded "insufficient evidence" or "undetermined", preserve that — do NOT speculate.
+- If an agent failed or returned no results, state that explicitly as a limitation.
 """
 
 
@@ -994,21 +1113,24 @@ Given the following user query and dictionaries, proceed with these instructions
 """
 
 
-PROPOSAL_TOOL_SELECTION_TEMPLATE = """You are a smart tool selection assistant for proposal generation. Your task is to analyze the user query and identify the most relevant tools that would be needed to complete the task described in the query.
+PROPOSAL_TOOL_SELECTION_TEMPLATE = """You are a tool selection assistant for Medea, a computational biomedical research agent. Medea's goal is to provide data-driven, multi-evidence analysis — not just literature answers. Your task is to select the tools needed to build a thorough analysis pipeline for the user's query.
 
-Given a user query, select the minimum set of tools that would be essential for:
-1. Analyzing biological entities mentioned (genes, proteins, diseases, etc.)
-2. Performing computational analyses requested
-3. Retrieving scientific literature if validation is needed
-4. Generating comprehensive insights
+Before selecting tools, reason through these steps:
+
+1. IDENTIFY ENTITIES: What biological entities are mentioned (genes, proteins, diseases, organisms, conditions)?
+2. CHECK SPECIES CONTEXT: What species do the entities belong to? Most analytical tools in Medea (pathway analysis, DepMap, HumanBase, HPA, enrichment) operate on human gene symbols. If any entities come from a non-human organism, you must include organism-specific annotation tools and cross-species ortholog mapping tools to translate identifiers before any downstream human-centric analysis can run.
+3. BUILD THE PIPELINE: What tools are needed at each stage?
+   - Annotation: tools to retrieve gene/protein function information
+   - Translation: cross-species mapping tools if entities are non-human
+   - Computational analysis: pathway, interaction, expression, or correlation tools
+   - Validation: literature tools for evidence synthesis (use as a complement, not as the sole tool)
 
 SELECTION CRITERIA:
-- Select tools that directly address the main objectives in the query
+- Always include gene annotation or gene info tools when specific genes are mentioned
+- Include cross-species mapping tools whenever entities are from a non-human organism
+- Include at least one computational analysis tool (pathway, interaction, enrichment, correlation) when genes are mentioned
+- Include literature tools as complementary validation, not as the only tool
 - Prioritize lightweight tools over heavy computational tools
-- Include literature search tools if hypothesis validation is mentioned
-- Include interaction/enrichment tools for gene/protein analysis
-- Include expression analysis tools for cancer/disease contexts
-- Select tools for different analysis types (pathway, function, expression, etc.)
 - Avoid selecting redundant tools that provide similar functionality
 
 CRITICAL: Return ONLY a Python list of tool names. No explanations, no additional text, no markdown formatting.

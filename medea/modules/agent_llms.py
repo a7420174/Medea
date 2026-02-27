@@ -11,7 +11,7 @@ dotenv.load_dotenv()
 
 # Import chat_completion from gpt_utils
 from ..tool_space.gpt_utils import chat_completion
-from ..tool_space.env_utils import get_backbone_llm, get_env_with_error
+from ..tool_space.env_utils import get_backbone_llm, get_env_with_error, get_llm_provider
 
 # Constants
 DEFAULT_MAX_ATTEMPTS = 3
@@ -84,11 +84,10 @@ class AgentLLM(BaseLLM):
         self.model = llm_name or get_backbone_llm("gpt-4o")
         self.system_prompt = system_prompt
         self.input_variables = input_variables or ["prompt"]
-        self.use_openrouter = get_env_with_error("USE_OPENROUTER", default="true").lower() == "true"
+        self.provider = get_llm_provider()
         
         if verbose:
-            provider = "OpenRouter" if self.use_openrouter else "Direct API"
-            print(f"Initialized LLM: {self.model} (via {provider})")
+            print(f"Initialized LLM: {self.model} (via {self.provider})")
     
     def run(
         self, 
@@ -114,7 +113,7 @@ class AgentLLM(BaseLLM):
         # Prepare messages from input
         messages = self._prepare_messages(input_data)
         
-        # Call chat_completion (handles all provider logic, retries, etc.)
+        # Call chat_completion (routes to provider based on LLM_PROVIDER_NAME)
         try:
             response = chat_completion(
                 messages=messages,
@@ -122,7 +121,6 @@ class AgentLLM(BaseLLM):
                 model=self.model,
                 mod='chat',  # Already in message format
                 attempts=max_attempts,
-                use_openrouter=self.use_openrouter
             )
             return response
         except Exception as e:
@@ -192,21 +190,26 @@ class AgentLLM(BaseLLM):
 
 class LLMProviderRegistry:
     """
-    Simplified registry for backward compatibility.
+    Registry for LLM providers.
     
-    Provider logic is now handled by chat_completion in gpt_utils.
+    Provider routing is controlled by the LLM_PROVIDER_NAME environment variable.
+    Valid values: OpenRouter, Azure, OpenAI, Claude, Gemini
     """
     
     @classmethod
     def list_providers(cls) -> List[str]:
         """List available providers."""
-        return ["OpenRouter", "AzureOpenAI", "OpenAI", "Claude", "Gemini", "Ollama"]
+        return ["OpenRouter", "Azure", "OpenAI", "Claude", "Gemini"]
     
     @classmethod
-    def use_openrouter_globally(cls) -> None:
-        """Enable OpenRouter globally."""
-        os.environ["USE_OPENROUTER"] = "true"
-        print("[LLMProviderRegistry] ✓ OpenRouter enabled globally")
+    def set_provider(cls, provider: str) -> None:
+        """Set the LLM provider globally via LLM_PROVIDER_NAME."""
+        from ..tool_space.env_utils import VALID_LLM_PROVIDERS
+        if provider not in VALID_LLM_PROVIDERS:
+            print(f"[LLMProviderRegistry] ⚠️  Unknown provider '{provider}'. Valid: {', '.join(VALID_LLM_PROVIDERS)}")
+            return
+        os.environ["LLM_PROVIDER_NAME"] = provider
+        print(f"[LLMProviderRegistry] ✓ Provider set to {provider}")
 
 
 # ============================================================================

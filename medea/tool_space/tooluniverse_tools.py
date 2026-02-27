@@ -348,6 +348,141 @@ class DepMapCorrelationsTool(BaseTool):
 
 
 # ============================================================================
+# Yeast-Human Ortholog Mapping Tools
+# ============================================================================
+
+@register_tool('find_human_orthologs_for_yeast_gene')
+class FindHumanOrthologsForYeastGeneTool(BaseTool):
+    """Find human orthologs for a yeast gene using SGD (direct) + PomBase (triangulated via S. pombe)."""
+    
+    def run(self, arguments: Dict[str, Any]) -> Dict[str, Any]:
+        """Look up human orthologs for a S. cerevisiae gene."""
+        from .yeast_human_orthologs import find_human_orthologs_for_yeast_gene
+        
+        yeast_gene = arguments.get('yeast_gene')
+        include_pombase = arguments.get('include_pombase', True)
+        
+        try:
+            return find_human_orthologs_for_yeast_gene(
+                yeast_gene=yeast_gene,
+                include_pombase=include_pombase
+            )
+        except Exception as e:
+            return {
+                "success": False,
+                "error": str(e),
+                "yeast_gene": yeast_gene
+            }
+    
+    def validate_input(self, **kwargs) -> None:
+        if 'yeast_gene' not in kwargs or not kwargs['yeast_gene']:
+            raise ValueError("yeast_gene is required (standard name like 'RAD51' or systematic name like 'YER095W')")
+
+
+@register_tool('find_yeast_orthologs_for_human_gene')
+class FindYeastOrthologsForHumanGeneTool(BaseTool):
+    """Find yeast (S. cerevisiae) orthologs for a human gene using PomBase triangulation + SGD validation."""
+    
+    def run(self, arguments: Dict[str, Any]) -> Dict[str, Any]:
+        """Look up yeast orthologs for a human gene."""
+        from .yeast_human_orthologs import find_yeast_orthologs_for_human_gene
+        
+        human_gene = arguments.get('human_gene')
+        include_pombase = arguments.get('include_pombase', True)
+        
+        try:
+            return find_yeast_orthologs_for_human_gene(
+                human_gene=human_gene,
+                include_pombase=include_pombase
+            )
+        except Exception as e:
+            return {
+                "success": False,
+                "error": str(e),
+                "human_gene": human_gene
+            }
+    
+    def validate_input(self, **kwargs) -> None:
+        if 'human_gene' not in kwargs or not kwargs['human_gene']:
+            raise ValueError("human_gene is required (e.g. 'TP53', 'BRCA1')")
+
+
+@register_tool('find_yeast_human_complementation')
+class FindYeastHumanComplementationTool(BaseTool):
+    """Find experimentally validated functional complementation pairs between yeast and human genes."""
+    
+    def run(self, arguments: Dict[str, Any]) -> Dict[str, Any]:
+        """Look up functional complementation data from SGD."""
+        from .yeast_human_orthologs import find_yeast_human_complementation
+        
+        yeast_gene = arguments.get('yeast_gene')
+        
+        try:
+            return find_yeast_human_complementation(yeast_gene=yeast_gene)
+        except Exception as e:
+            return {
+                "success": False,
+                "error": str(e),
+                "yeast_gene": yeast_gene
+            }
+    
+    def validate_input(self, **kwargs) -> None:
+        if 'yeast_gene' not in kwargs or not kwargs['yeast_gene']:
+            raise ValueError("yeast_gene is required")
+
+
+@register_tool('get_yeast_gene_info')
+class GetYeastGeneInfoTool(BaseTool):
+    """Get comprehensive information about a yeast gene from SGD (description, type, aliases, GO annotations)."""
+    
+    def run(self, arguments: Dict[str, Any]) -> Dict[str, Any]:
+        """Retrieve yeast gene information from SGD."""
+        from .yeast_human_orthologs import get_yeast_gene_info
+        
+        yeast_gene = arguments.get('yeast_gene')
+        
+        try:
+            return get_yeast_gene_info(yeast_gene=yeast_gene)
+        except Exception as e:
+            return {
+                "success": False,
+                "error": str(e),
+                "yeast_gene": yeast_gene
+            }
+    
+    def validate_input(self, **kwargs) -> None:
+        if 'yeast_gene' not in kwargs or not kwargs['yeast_gene']:
+            raise ValueError("yeast_gene is required (standard name like 'RAD51' or systematic name like 'YER095W')")
+
+
+@register_tool('batch_yeast_to_human_mapping')
+class BatchYeastToHumanMappingTool(BaseTool):
+    """Batch-map multiple yeast genes to their human orthologs using SGD + PomBase."""
+    
+    def run(self, arguments: Dict[str, Any]) -> Dict[str, Any]:
+        """Execute batch ortholog mapping."""
+        from .yeast_human_orthologs import batch_yeast_to_human_mapping
+        
+        yeast_genes = arguments.get('yeast_genes', [])
+        include_pombase = arguments.get('include_pombase', True)
+        
+        try:
+            return batch_yeast_to_human_mapping(
+                yeast_genes=yeast_genes,
+                include_pombase=include_pombase
+            )
+        except Exception as e:
+            return {
+                "success": False,
+                "error": str(e)
+            }
+    
+    def validate_input(self, **kwargs) -> None:
+        if 'yeast_genes' not in kwargs or not kwargs['yeast_genes']:
+            raise ValueError("yeast_genes list is required (e.g. ['RAD51', 'CDC28', 'TUB1'])")
+
+
+# ============================================================================
 # Registry Helper
 # ============================================================================
 
@@ -363,7 +498,8 @@ def list_medea_tools():
     medea_tools = [name for name in tools.keys() if any(
         name.startswith(prefix) for prefix in [
             'load_', 'humanbase_', 'analyze_', 'compass_', 
-            'compute_'
+            'compute_', 'find_human_orthologs', 'find_yeast_orthologs',
+            'find_yeast_human', 'get_yeast_gene', 'batch_yeast'
         ]
     )]
     return medea_tools

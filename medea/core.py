@@ -8,6 +8,7 @@ This module provides the main entry points for running Medea:
 - literature_reasoning(): Literature search and reasoning
 """
 
+import os
 import multiprocessing as mp
 from typing import Dict, Optional, Any
 from agentlite.commons import TaskPackage
@@ -52,11 +53,17 @@ def experiment_analysis(
     research_plan_task_dict = {"user_query": query}
     research_plan_taskpack = TaskPackage(instruction=str(research_plan_task_dict))
     
-    try: 
-        research_plan_response = research_planning_module(research_plan_taskpack)
-    except Exception as e:
-        print(f"Research plan agent call failed: {e}", flush=True)
-        return "None", "None"
+    max_agent_retries = int(os.environ.get("AGENT_MAX_RETRIES", "1"))
+    research_plan_response = None
+    for attempt in range(max_agent_retries):
+        try: 
+            research_plan_response = research_planning_module(research_plan_taskpack)
+            if research_plan_response is not None:
+                break
+        except Exception as e:
+            print(f"Research plan agent call failed (attempt {attempt+1}/{max_agent_retries}): {e}", flush=True)
+            if attempt == max_agent_retries - 1:
+                return "None", "None"
 
     # Execute experiment analysis if research plan is valid
     analysis_response, research_plan_text = "None", "None"
@@ -66,11 +73,15 @@ def experiment_analysis(
         analysis_task_dict = {"task": query, "instruction": research_plan_text}
         analysis_taskpack = TaskPackage(instruction=str(analysis_task_dict))
         
-        try:
-            analysis_response = analysis_module(analysis_taskpack)
-        except Exception as e:
-            print(f"Analysis agent call failed: {e}", flush=True)
-            return research_plan_text, "None"
+        for attempt in range(max_agent_retries):
+            try:
+                analysis_response = analysis_module(analysis_taskpack)
+                if analysis_response is not None and analysis_response != "None":
+                    break
+            except Exception as e:
+                print(f"Analysis agent call failed (attempt {attempt+1}/{max_agent_retries}): {e}", flush=True)
+                if attempt == max_agent_retries - 1:
+                    return research_plan_text, "None"
             
     return research_plan_text, analysis_response
 
@@ -100,11 +111,15 @@ def literature_reasoning(
     task_dict = {"user_query": query, "hypothesis": None}
     reason_taskpack = TaskPackage(instruction=str(task_dict))
 
-    try:
-        reasoning_response = literature_module(reason_taskpack)
-    except Exception as e:
-        print(f"Reasoning agent call failed: {e}", flush=True)
-        reasoning_response = "None"
+    max_agent_retries = int(os.environ.get("AGENT_MAX_RETRIES", "1"))
+    reasoning_response = "None"
+    for attempt in range(max_agent_retries):
+        try:
+            reasoning_response = literature_module(reason_taskpack)
+            if reasoning_response is not None and reasoning_response != "None":
+                break
+        except Exception as e:
+            print(f"Reasoning agent call failed (attempt {attempt+1}/{max_agent_retries}): {e}", flush=True)
         
     return reasoning_response
 
@@ -114,10 +129,50 @@ def literature_reasoning(
 # ============================================================================
 
 def _experiment_wrapper(inputs_for_coding, coding_result):
-    """Wrapper for experiment analysis module in multiprocessing context."""
+    """Wrapper for experiment analysis module in multiprocessing context.
+    Runs research planning and analysis in two phases so the research plan
+    is saved even if analysis times out."""
+    from .modules.utils import Proposal
+    
+    query, research_planning_module, analysis_module = inputs_for_coding
+    
     try:
-        result = experiment_analysis(*inputs_for_coding)
-        coding_result['data'] = result
+        # Phase 1: Research planning (save immediately)
+        research_plan_task_dict = {"user_query": query}
+        research_plan_taskpack = TaskPackage(instruction=str(research_plan_task_dict))
+        
+        max_retries = int(os.environ.get("AGENT_MAX_RETRIES", "1"))
+        research_plan_response = None
+        for attempt in range(max_retries):
+            try:
+                research_plan_response = research_planning_module(research_plan_taskpack)
+                if research_plan_response is not None:
+                    break
+            except Exception as e:
+                print(f"Research plan agent call failed (attempt {attempt+1}/{max_retries}): {e}", flush=True)
+        
+        research_plan_text = "None"
+        if isinstance(research_plan_response, dict) and isinstance(research_plan_response.get('proposal_draft'), Proposal):
+            research_plan_text = research_plan_response['proposal_draft'].proposal
+        
+        # Save research plan immediately — survives if analysis times out
+        coding_result['research_plan'] = research_plan_text
+        
+        # Phase 2: Analysis (may be killed by timeout)
+        analysis_response = "None"
+        if research_plan_text != "None":
+            analysis_task_dict = {"task": query, "instruction": research_plan_text}
+            analysis_taskpack = TaskPackage(instruction=str(analysis_task_dict))
+            
+            for attempt in range(max_retries):
+                try:
+                    analysis_response = analysis_module(analysis_taskpack)
+                    if analysis_response is not None and analysis_response != "None":
+                        break
+                except Exception as e:
+                    print(f"Analysis agent call failed (attempt {attempt+1}/{max_retries}): {e}", flush=True)
+        
+        coding_result['data'] = (research_plan_text, analysis_response)
         coding_result['success'] = True
     except Exception as e:
         print(f"[CODING_PROCESS] Error: {e}", flush=True)
@@ -148,7 +203,7 @@ def medea(
     include_backbone_llm: bool = True,
     vote_merge: bool = True,
     full_instruction: bool = False,
-    timeout: int = 800
+    timeout: int = 1200
 ) -> Dict[str, Any]:
     """
     Execute full Medea multi-agent system with parallel execution.
@@ -211,6 +266,10 @@ def medea(
         >>> print(result['final'])  # Final hypothesis from panel discussion
     """
     from .modules.discussion import multi_round_discussion
+    from .tool_space.agentic_tool import reset_call_budget
+    
+    # Reset per-sample caches and call budgets
+    reset_call_budget()
     
     print(f"\n[MEDEA] Starting parallel execution: Research Planning + In-silico Experiment + Literature Reasoning", flush=True)
     
@@ -302,10 +361,15 @@ def medea(
     if analysis_result.get('success', False):
         research_plan_text, analysis_response = analysis_result['data']
         print(f"[MEDEA] ✓ Analysis process completed successfully", flush=True)
-    elif 'error' in analysis_result:
-        print(f"[MEDEA] ✗ Analysis process failed: {analysis_result['error']}", flush=True)
     else:
-        print(f"[MEDEA] ⚠ Analysis process: no result", flush=True)
+        # Even if analysis timed out or failed, try to recover the research plan
+        if 'research_plan' in analysis_result and analysis_result['research_plan'] != "None":
+            research_plan_text = analysis_result['research_plan']
+            print(f"[MEDEA] ⚠ Analysis timed out, but research plan was recovered", flush=True)
+        elif 'error' in analysis_result:
+            print(f"[MEDEA] ✗ Analysis process failed: {analysis_result['error']}", flush=True)
+        else:
+            print(f"[MEDEA] ⚠ Analysis process: no result", flush=True)
     
     if literature_result.get('success', False):
         literature_response = literature_result['data']

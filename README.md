@@ -351,17 +351,11 @@ python main.py --task targetID --disease blastoma --scfm PINNACLE --sample-seed 
 ##### Synthetic Lethality Task
 
 ```bash
-# Default SL (cell line: MCF7, source: samson)
-python main.py --task sl
+# Human cell line SL (source: samson)
+python main.py --task sl --sl-source samson --cell-line CAL27
 
-# Custom cell line
-python main.py --task sl --cell-line A549
-
-# Different data source
-python main.py --task sl --sl-source samson
-
-# Combined
-python main.py --task sl --cell-line CAL27 --sl-source samson
+# Custom seed
+python main.py --task sl --sl-source samson --cell-line CAL27 --sample-seed 44
 ```
 
 ##### Immune Therapy Response Task
@@ -404,8 +398,9 @@ python main.py \
   --quality-max-iter 3 \
   --evaluation-folder ./custom_evaluation
 
-# Resume from checkpoint
-python main.py --checkpoint "PARP6,NOTCH1,CAL27,non-sl"
+# Resume from checkpoint (human cell line SL)
+python main.py --task sl --sl-source samson --cell-line CAL27 --sample-seed 42 \
+  --checkpoint "PARP6,NOTCH1,CAL27,non-sl"
 
 # Multi-round discussion with custom panelists
 python main.py \
@@ -437,8 +432,8 @@ python main.py \
 
 | Argument | Type | Default | Description |
 |----------|------|---------|-------------|
-| `--cell-line` | str | `MCF7` | Cell line |
-| `--sl-source` | str | `samson` | SL data source (samson) |
+| `--cell-line` | str | `MCF7` | Cell line (for samson source, e.g., MCF7, CAL27, A549) |
+| `--sl-source` | str | `samson` | SL data source (samson, yeast) |
 
 #### Immune Therapy Task
 
@@ -509,9 +504,13 @@ Output changes based on your task and arguments.
    - `BACKBONE_LLM`, `SEED`, `MEDEADB_PATH`, etc. are still used
    - Command-line args override defaults but respect env vars where appropriate
 
-4. **Checkpoint format:**
+4. **Checkpoint format** (resume from where you left off):
    ```bash
-   --checkpoint "GENE1,GENE2,CELLLINE,TYPE"
+   # For samson (human cell line) SL:
+   --checkpoint "GENE1,GENE2,CELLLINE,INTERACTION"
+   # For yeast SL:
+   --checkpoint "GENE1,GENE2,CONDITION,INTERACTION"
+   # Values must match the last completed row in the CSV log
    ```
 
 ## Documentation

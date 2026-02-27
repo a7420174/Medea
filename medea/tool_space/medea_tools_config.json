@@ -298,6 +298,137 @@
           "result": {"type": "object"}
         }
       }
+    },
+    {
+      "name": "find_human_orthologs_for_yeast_gene",
+      "description": "Find human orthologs for a yeast (S. cerevisiae) gene. Combines direct ortholog data from SGD (Alliance/DIOPT) with triangulated mappings via S. pombe from PomBase. Returns confidence-scored orthologs and functional complementation data.",
+      "parameters": {
+        "yeast_gene": {
+          "type": "string",
+          "description": "Yeast gene name - standard (e.g., 'RAD51', 'CDC28') or systematic (e.g., 'YER095W')",
+          "required": true
+        },
+        "include_pombase": {
+          "type": "boolean",
+          "description": "Include PomBase triangulated orthologs via S. pombe (default: true)",
+          "required": false,
+          "default": true
+        }
+      },
+      "returns": {
+        "type": "object",
+        "properties": {
+          "success": {"type": "boolean"},
+          "yeast_gene": {"type": "string"},
+          "yeast_info": {"type": "object", "description": "SGD gene info (name, systematic name, description, type)"},
+          "orthologs": {"type": "array", "description": "List of OrthologMapping objects with target_gene, confidence, data_source"},
+          "num_orthologs": {"type": "integer"},
+          "complementation": {"type": "array", "description": "Experimentally validated functional complementation pairs"},
+          "num_complementation": {"type": "integer"},
+          "data_sources_used": {"type": "array", "items": {"type": "string"}},
+          "summary": {"type": "string"}
+        }
+      }
+    },
+    {
+      "name": "find_yeast_orthologs_for_human_gene",
+      "description": "Find yeast (S. cerevisiae) orthologs for a human gene. Uses PomBase triangulation (human→S. pombe→S. cerevisiae) and validates results against SGD.",
+      "parameters": {
+        "human_gene": {
+          "type": "string",
+          "description": "Human gene symbol (e.g., 'TP53', 'BRCA1', 'RAD51')",
+          "required": true
+        },
+        "include_pombase": {
+          "type": "boolean",
+          "description": "Include PomBase triangulated orthologs (default: true)",
+          "required": false,
+          "default": true
+        }
+      },
+      "returns": {
+        "type": "object",
+        "properties": {
+          "success": {"type": "boolean"},
+          "human_gene": {"type": "string"},
+          "orthologs": {"type": "array", "description": "List of OrthologMapping objects"},
+          "num_orthologs": {"type": "integer"},
+          "data_sources_used": {"type": "array", "items": {"type": "string"}},
+          "summary": {"type": "string"}
+        }
+      }
+    },
+    {
+      "name": "find_yeast_human_complementation",
+      "description": "Find experimentally validated functional complementation pairs between yeast and human genes. These represent the strongest evidence for functional conservation, where one gene can replace the other cross-species.",
+      "parameters": {
+        "yeast_gene": {
+          "type": "string",
+          "description": "Yeast gene name (standard or systematic)",
+          "required": true
+        }
+      },
+      "returns": {
+        "type": "object",
+        "properties": {
+          "success": {"type": "boolean"},
+          "yeast_gene": {"type": "string"},
+          "complementation_pairs": {"type": "array", "description": "Experimentally validated pairs with direction, reference PMID, strain background"},
+          "num_pairs": {"type": "integer"},
+          "summary": {"type": "string"}
+        }
+      }
+    },
+    {
+      "name": "get_yeast_gene_info",
+      "description": "Get comprehensive information about a yeast gene from SGD including description, gene type, qualifier (Verified/Uncharacterized), aliases, and URL.",
+      "parameters": {
+        "yeast_gene": {
+          "type": "string",
+          "description": "Yeast gene name - standard (e.g., 'RAD51') or systematic (e.g., 'YER095W')",
+          "required": true
+        }
+      },
+      "returns": {
+        "type": "object",
+        "properties": {
+          "success": {"type": "boolean"},
+          "gene_info": {
+            "type": "object",
+            "description": "Gene info object with gene_name, systematic_name, sgd_id, description, gene_type, qualifier, aliases, url"
+          },
+          "url": {"type": "string"}
+        }
+      }
+    },
+    {
+      "name": "batch_yeast_to_human_mapping",
+      "description": "Batch-map multiple yeast genes to their human orthologs. Efficiently processes a list of S. cerevisiae genes and returns aggregated mapping results with per-gene details.",
+      "parameters": {
+        "yeast_genes": {
+          "type": "array",
+          "items": {"type": "string"},
+          "description": "List of yeast gene names to map (e.g., ['RAD51', 'CDC28', 'TUB1'])",
+          "required": true
+        },
+        "include_pombase": {
+          "type": "boolean",
+          "description": "Include PomBase triangulated orthologs (default: true)",
+          "required": false,
+          "default": true
+        }
+      },
+      "returns": {
+        "type": "object",
+        "properties": {
+          "success": {"type": "boolean"},
+          "total_genes_queried": {"type": "integer"},
+          "genes_with_human_orthologs": {"type": "integer"},
+          "total_ortholog_mappings": {"type": "integer"},
+          "results": {"type": "object", "description": "Per-gene results keyed by gene name"},
+          "summary": {"type": "string"}
+        }
+      }
     }
   ]
 }

@@ -18,10 +18,8 @@ from ..tool_space.search_api import KeywordExtractor, SemanticScholarSearch, LLM
 from ..tool_space.open_alex import search_openalex_papers
 from ..tool_space.open_scholar import OpenScholar
 
-# FlagEmbedding may download models on first import - this can take time
-print("[INFO] Loading FlagEmbedding library (may download models on first run)...", flush=True)
-from FlagEmbedding import FlagReranker
-print("[INFO] FlagEmbedding loaded successfully", flush=True)
+# FlagEmbedding: lazy import to avoid loading in every subprocess
+FlagReranker = None  # Placeholder — loaded on first use via get_reranker()
 
 from .agent_llms import LLMConfig, AgentLLM
 from .agent_llms import parse_action
@@ -30,6 +28,29 @@ from .BasePrompt import BasePromptGen
 from .utils import ReasoningPackage, LiteratureCollection
 from .prompt_template import *
 from .prompt_template import MISS_ACTION_PARAM, WRONG_ACTION_PARAM
+
+# Global FlagReranker singleton — avoids re-loading the model (~30s) on every call
+_cached_reranker = None
+_cached_reranker_config = None  # (model_name, use_fp16) tuple
+
+
+def get_reranker(model_name="OpenSciLM/OpenScholar_Reranker", use_fp16=False):
+    """Get or create a cached FlagReranker instance. Lazy-imports FlagEmbedding on first use."""
+    global FlagReranker, _cached_reranker, _cached_reranker_config
+    
+    # Lazy import — only load FlagEmbedding when actually needed
+    if FlagReranker is None:
+        print(f"[Reranker] Loading FlagEmbedding library...", flush=True)
+        from FlagEmbedding import FlagReranker as _FR
+        FlagReranker = _FR
+    
+    config = (model_name, use_fp16)
+    if _cached_reranker is None or _cached_reranker_config != config:
+        print(f"[Reranker] Initializing model: {model_name} (fp16={use_fp16})", flush=True)
+        _cached_reranker = FlagReranker(model_name, use_fp16=use_fp16)
+        _cached_reranker_config = config
+        print(f"[Reranker] Ready (cached for future calls)", flush=True)
+    return _cached_reranker
 
 
 class LiteratureSearch(BaseAction):
@@ -205,7 +226,12 @@ class PaperJudge(BaseAction):
             if self.verbose:
                 print("[PaperJudge] No papers to evaluate")
             literature_collection.status = "judged"
-            return "[PaperJudge] No papers to evaluate, indicating that there is no existing literature that is relevant to the user query. Suggest to abstain from reasoning."
+            return (
+                "[PaperJudge] Literature search completed: NO relevant papers found. "
+                "A thorough search was conducted but returned no peer-reviewed studies "
+                "supporting or addressing the user query. This is a negative finding — "
+                "the absence of literature evidence should be considered when forming conclusions."
+            )
         
         try:
             assessments = []
@@ -290,19 +316,46 @@ class OpenScholarReasoning(BaseAction):
             if self.verbose:
                 print(f"[OpenScholarReasoning] Analyzing query: {user_query}")
             
-            # Check if we have literature - abstain if none found
+            # Check if we have literature - report negative finding if none found
             if literature_collection is None or literature_collection.get_paper_count() == 0:
                 if self.verbose:
-                    print("[OpenScholarReasoning] No literature found, abstaining from reasoning")
-                return "[OpenScholarReasoning]: No relevant scientific studies found to ground the analysis. I would suggest to abstain the reasoning."
+                    print("[OpenScholarReasoning] No literature found — reporting negative finding")
+                return (
+                    "[OpenScholarReasoning] Literature search completed: NO relevant scientific studies found "
+                    "to support or address the query. This is a negative finding based on a thorough search — "
+                    "the absence of supporting literature should be factored into any conclusion. "
+                    "Without empirical evidence, any answer would be purely speculative."
+                )
             
             # Prepare papers for OpenScholar
             papers = literature_collection.get_papers()
             if self.verbose:
                 print(f"[OpenScholarReasoning] Using {len(papers)} papers from {literature_collection.get_id()}")
             
-            # Prepare data for OpenScholar
-            reason_dict = [{'input': user_query, 'ctxs': papers}]
+            # Prepare data for OpenScholar — sanitize papers to ensure text fields are valid strings
+            sanitized_papers = []
+            for p in papers:
+                if p.get("text") is None or not isinstance(p.get("text"), str) or len(p["text"].strip()) == 0:
+                    if self.verbose:
+                        print(f"[OpenScholarReasoning] Skipping paper with missing/empty text: {p.get('title', 'Unknown')[:80]}", flush=True)
+                    continue
+                # Ensure title is a string (not None)
+                if p.get("title") is None:
+                    p["title"] = ""
+                sanitized_papers.append(p)
+            
+            if not sanitized_papers:
+                if self.verbose:
+                    print("[OpenScholarReasoning] No papers with valid text after sanitization", flush=True)
+                return (
+                    "[OpenScholarReasoning] Literature search completed: papers were found but none contained "
+                    "valid text content for analysis. This is a negative finding — no literature evidence is available."
+                )
+            
+            if self.verbose and len(sanitized_papers) != len(papers):
+                print(f"[OpenScholarReasoning] Sanitized: {len(papers)} papers → {len(sanitized_papers)} with valid text", flush=True)
+            
+            reason_dict = [{'input': user_query, 'ctxs': sanitized_papers}]
             
             # Initialize reranker and OpenScholar
             # Auto-detect device: use CUDA if available, otherwise CPU
@@ -321,18 +374,7 @@ class OpenScholarReasoning(BaseAction):
                     if self.verbose:
                         print(f"[OpenScholarReasoning] No CUDA detected, using CPU", flush=True)
             
-            if self.verbose:
-                print(f"[OpenScholarReasoning] Initializing reranker: {self.default_reranker}", flush=True)
-                print(f"[OpenScholarReasoning] Device: {device}, FP16: {use_fp16}", flush=True)
-                print(f"[OpenScholarReasoning] First-time use may download model files (~1GB)...", flush=True)
-            
-            reranker = FlagReranker(
-                self.default_reranker, 
-                use_fp16=use_fp16
-            )
-            
-            if self.verbose:
-                print(f"[OpenScholarReasoning] Reranker initialized successfully", flush=True)
+            reranker = get_reranker(self.default_reranker, use_fp16=use_fp16)
             
             open_scholar = OpenScholar(
                 model=kwargs.get('model'),
@@ -400,7 +442,9 @@ class OpenScholarReasoning(BaseAction):
             
         except Exception as e:
             if self.verbose:
-                print(f"[OpenScholarReasoning] Error during reasoning: {e}")
+                import traceback
+                print(f"[OpenScholarReasoning] Error during reasoning: {e}", flush=True)
+                traceback.print_exc()
             return f"Unable to provide reasoning: OpenScholar processing failed with error - {str(e)}"
 
 

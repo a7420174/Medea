@@ -24,10 +24,7 @@ from typing import List, Dict, Any, Iterable, Tuple, Optional
 import requests
 from bs4 import BeautifulSoup
 
-# FlagEmbedding may download models on first import - this can take time
-print("[INFO] Loading FlagEmbedding library (may download reranker models)...", flush=True)
-from FlagEmbedding import FlagReranker
-print("[INFO] FlagEmbedding loaded successfully", flush=True)
+# FlagEmbedding: lazy import via get_reranker() — not loaded at module level
 
 from tqdm import tqdm
 
@@ -939,16 +936,9 @@ class OpenScholarReasoning:
             kwargs['use_contexts'] = False
             kwargs['max_per_paper'] = None
         
-        # Initialize reranker and OpenScholar
-        print(f"[OpenScholarReasoning] Initializing reranker: {default_reranker}", flush=True)
-        print(f"[OpenScholarReasoning] First-time use may download model files (~1GB)...", flush=True)
-        
-        reranker = FlagReranker(
-            default_reranker, 
-            use_fp16=True
-        )
-        
-        print(f"[OpenScholarReasoning] Reranker initialized successfully", flush=True)
+        # Initialize reranker (uses cached singleton if available)
+        from ..modules.literature_reasoning import get_reranker
+        reranker = get_reranker(default_reranker, use_fp16=True)
         
         open_scholar = OpenScholar(
             model=kwargs.get('model'),

@@ -49,7 +49,7 @@ Return only a single Action in the correct format.""",
     "manager_instruction": f"""You are a manager agent. You can assign a task to those agents in your team. Follow your {PROMPT_TOKENS["role"]['begin']}, {PROMPT_TOKENS["action"]['begin']}, {PROMPT_TOKENS["team"]['begin']} to take actions.""",
     "constraint": f"""{CONSTRAITS["simple"]}""",
     "action_format": "Using the following action format example to generate well formatted actions.\n",
-    "not_completed": "I cannot help with that. Please be more specific.",
+    "not_completed": "Agent could not complete the task within the allowed steps. Returning partial results or abstaining.",
 }
 
 class ObjectEncoder(json.JSONEncoder):

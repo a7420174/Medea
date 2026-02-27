@@ -11,6 +11,10 @@ from agentlite.actions import PlanAct, ThinkAct
 from agentlite.actions.BaseAction import BaseAction
 from agentlite.agents import ABCAgent, BaseAgent
 from agentlite.agents.agent_utils import *
+try:
+    from agentlite.agents.agent_utils import ACTION_NOT_FOUND_MESS
+except ImportError:
+    ACTION_NOT_FOUND_MESS = "[Error] Action not found in action list."
 from agentlite.commons import AgentAct, TaskPackage
 from agentlite.commons.AgentAct import ActObsChainType
 
@@ -276,7 +280,7 @@ class ContextVerification(BaseAction):
         return obj
 
     def _extract_context_pairs(self, proposal_text: str) -> List[Dict]:
-        """Extract tool-checker pairs from proposal text."""
+        """Extract tool-checker pairs from proposal text, deduplicating identical checks."""
         try:
             response = self.context_checker.run(proposal_text).strip()
             
@@ -288,8 +292,29 @@ class ContextVerification(BaseAction):
             
             pairs = json.loads(response.strip())
             pairs = self._convert_null_to_none(pairs)
-            print(f"Context check output: {json.dumps(pairs, indent=2)}", flush=True)
-            return pairs
+            
+            # Deduplicate: same checker_name + same input_params → keep only one
+            seen = {}
+            unique_pairs = []
+            for pair in pairs:
+                checker = pair.get('checker_name', '')
+                params_key = json.dumps(pair.get('input_params', {}), sort_keys=True, default=str)
+                dedup_key = (checker, params_key)
+                if dedup_key not in seen:
+                    seen[dedup_key] = [pair.get('tool', '')]
+                    unique_pairs.append(pair)
+                else:
+                    seen[dedup_key].append(pair.get('tool', ''))
+            
+            # Log dedup results
+            if len(pairs) != len(unique_pairs):
+                print(f"[ContextVerification] Deduplicated {len(pairs)} pairs → {len(unique_pairs)} unique checks", flush=True)
+                for (checker, _), tools in seen.items():
+                    if len(tools) > 1:
+                        print(f"  {checker}: merged from {len(tools)} tools ({', '.join(tools)})", flush=True)
+            
+            print(f"Context check output: {json.dumps(unique_pairs, indent=2)}", flush=True)
+            return unique_pairs
             
         except Exception as e:
             print(f"Failed to extract context pairs: {e}", flush=True)
@@ -410,14 +435,19 @@ class ContextVerification(BaseAction):
             try:
                 pairs_to_check = self._extract_context_pairs(proposal_text)
                 if not pairs_to_check:
-                    feedbacks = ["No validation requirements found in proposal"]
+                    if attempt < attempts - 1:
+                        print(f"[ContextVerification] No pairs extracted (attempt {attempt+1}/{attempts}), retrying...", flush=True)
+                        continue
+                    # Final attempt: accept as no checks needed
+                    feedbacks = ["No validation requirements extracted from proposal (context checker returned empty)"]
+                    print(f"[ContextVerification] Warning: context checker returned no pairs after {attempts} attempts. Passing with warning.", flush=True)
                     break
                 
                 feedbacks, all_valid = self._process_validation_pairs(pairs_to_check)
                 break
                 
             except Exception as e:
-                print(f"Attempt {attempt + 1} failed: {e}", flush=True)
+                print(f"[ContextVerification] Attempt {attempt + 1} failed: {e}", flush=True)
                 if attempt == attempts - 1:
                     feedbacks = [f"Context validation failed after {attempts} attempts: {str(e)}"]
                     all_valid = False

@@ -414,42 +414,72 @@ def humanbase_context_checker(gene_list:list[str]=None, tissue:str=None, top_n=5
     print(msg, flush=True)
     return True, msg
 
+def _is_human_gene(gene_name: str) -> bool:
+    """Check if a gene name is a recognized human gene symbol via MyGene.info."""
+    import requests, urllib.parse
+    try:
+        encoded = urllib.parse.quote(gene_name)
+        url = f"https://mygene.info/v3/query?q={encoded}&fields=symbol&species=human"
+        resp = requests.get(url, timeout=5)
+        if resp.status_code == 200:
+            hits = resp.json().get("hits", [])
+            return any(h.get("symbol", "").upper() == gene_name.upper() for h in hits)
+    except Exception:
+        pass
+    return False
+
+
 def enrichr_gene_name_checker(gene_list: list=None):
-    # If gene_list is empty/None, skip validation (discovery mode)
+    """
+    Validate gene names for Enrichr-based tools (which require human gene symbols).
+    Non-human genes are flagged with guidance to map to human orthologs first.
+    """
+    prefix = "[enrichr_gene_name_checker]"
+    
     if gene_list is None or len(gene_list) == 0:
-        msg = "[enrichr_gene_name_checker] Gene validation skipped (discovery mode - genes will come from disease targets or other sources)."
+        msg = f"{prefix} Gene validation skipped (discovery mode)."
         print(msg, flush=True)
         return True, msg
     
-    unavailable_genes = []
-    official_genes = {}
+    tool_instance = WikiPathwaysInteractionTool()
     
-    # Create an instance to call the instance method
-    tool_instance = WikiPathwaysInteractionTool()  # Any subclass will work since we just need the base method
+    valid_genes = []
+    official_genes = {}
+    unrecognized_genes = []
     
     for gene in gene_list:
         try:
             official_gene = tool_instance.get_official_gene_name(gene)
-            if official_gene != gene:
+            if official_gene == gene:
+                valid_genes.append(gene)
+            else:
                 official_genes[gene] = official_gene
-        except Exception as e:
-            print(f"[enrichr_gene_name_checker] Error checking gene {gene}: {e}", flush=True)
-            unavailable_genes.append(gene)
+        except Exception:
+            unrecognized_genes.append(gene)
     
-    if not unavailable_genes and not official_genes:
-        msg = f"[enrichr_gene_name_checker] All provided genes {gene_list} are valid for the enrichr_api function."
+    if not unrecognized_genes and not official_genes:
+        msg = f"{prefix} All provided genes {gene_list} are valid human gene symbols."
         return True, msg
     
     messages = []
+    
     if official_genes:
         corrections = ', '.join([f"{g} → {og}" for g, og in official_genes.items()])
-        messages.append(f"[enrichr_gene_name_checker] Please use official gene symbols: {corrections}. Clearly state the reason for this adjustment in your proposal, specifying that the original gene names provided by the user were not standardized. This clarification will inform other agents about the necessity of using standardized gene nomenclature.")
-        
-    if unavailable_genes:
-        messages.append(f"[enrichr_gene_name_checker] Official symbols not found for: {unavailable_genes}. Please verify these gene names.")
+        messages.append(f"{prefix} Please use official gene symbols: {corrections}.")
+        return False, ' '.join(messages)
     
-    final_message = ' '.join(messages)
-    return False, final_message
+    if unrecognized_genes:
+        # Pass with warning — don't block, as genes may be from another organism
+        # and the agent may not have a mapping tool available for that species.
+        # Enrichr may still work with orthologs if the agent maps them, or the
+        # analysis will simply return low/no results (which is valid evidence).
+        msg = (
+            f"{prefix} WARNING: {unrecognized_genes} not recognized as standard human gene symbols. "
+            f"Enrichr-based tools work best with human genes. If these are from another organism, "
+            f"consider mapping to human orthologs for better results. Proceeding anyway."
+        )
+        print(msg, flush=True)
+        return True, msg
     
 
 def concept_name_checker(user_query: str, concept_names: List[str], attempt: int = MAX_RETRY_ATTEMPTS) -> Tuple[bool, str]:
@@ -815,3 +845,76 @@ def _fuzzy_match_concepts(concept: str, available_concepts: List[str], max_items
         return [match[0] for match in matches]
     except Exception:
         return available_concepts[:max_items]
+
+
+def yeast_gene_name_checker(gene_list: List[str] = None, organism: str = "yeast") -> Tuple[bool, str]:
+    """
+    Validate whether yeast or human gene names are recognized by SGD / MyGene.info.
+    
+    Args:
+        gene_list: List of gene names to validate. If empty/None, skips validation.
+        organism: 'yeast' for S. cerevisiae genes (default), 'human' for reverse lookups.
+        
+    Returns:
+        Tuple of (is_valid, message)
+    """
+    prefix = "[yeast_gene_name_checker]"
+    
+    if not gene_list:
+        msg = f"{prefix} No gene list provided — skipping validation."
+        print(msg, flush=True)
+        return True, msg
+    
+    import requests
+    import urllib.parse
+    
+    invalid_genes = []
+    valid_genes = []
+    
+    for gene in gene_list:
+        gene = str(gene).strip()
+        if not gene:
+            continue
+        
+        try:
+            if organism.lower() == "yeast":
+                # Validate against SGD
+                url = f"https://www.yeastgenome.org/backend/locus/{urllib.parse.quote(gene)}"
+                resp = requests.get(url, timeout=10)
+                if resp.status_code == 200:
+                    data = resp.json()
+                    if isinstance(data, dict) and data.get("display_name"):
+                        valid_genes.append(f"{gene} ({data['display_name']})")
+                    else:
+                        invalid_genes.append(gene)
+                else:
+                    invalid_genes.append(gene)
+            else:
+                # Validate human gene against MyGene.info
+                encoded = urllib.parse.quote(gene)
+                url = f"https://mygene.info/v3/query?q={encoded}&fields=symbol&species=human"
+                resp = requests.get(url, timeout=10)
+                if resp.status_code == 200:
+                    data = resp.json()
+                    hits = data.get("hits", [])
+                    if hits:
+                        symbol = hits[0].get("symbol", gene)
+                        valid_genes.append(f"{gene} ({symbol})")
+                    else:
+                        invalid_genes.append(gene)
+                else:
+                    invalid_genes.append(gene)
+        except Exception:
+            invalid_genes.append(gene)
+    
+    if invalid_genes:
+        msg = (
+            f"{prefix} {len(invalid_genes)} gene(s) not recognized: {', '.join(invalid_genes)}. "
+            f"Valid genes: {', '.join(valid_genes) if valid_genes else 'none'}."
+        )
+        print(msg, flush=True)
+        return False, msg
+    
+    msg = f"{prefix} All {len(valid_genes)} gene(s) validated: {', '.join(valid_genes)}."
+    print(msg, flush=True)
+    return True, msg

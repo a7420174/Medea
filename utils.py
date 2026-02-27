@@ -79,20 +79,31 @@ def input_loader(
         
         elif task == "sl":
             for _, row in df.iterrows():
-                g_a = row.get('gene_a', '')
-                g_b = row.get('gene_b', '')
-                cell_line = row.get('cell_line', '')
-                interaction = row.get('interaction', '')
+                # Detect if this is yeast data or cell line data based on column presence
+                is_yeast_data = 'condition' in row.index or 'array_gene' in row.index
+                
+                if is_yeast_data:
+                    # Yeast data columns: array_gene, query_gene, condition, label
+                    g_a = row.get('gene_a', row.get('array_gene', ''))
+                    g_b = row.get('gene_b', row.get('query_gene', ''))
+                    context = row.get('condition', '')
+                    interaction = row.get('interaction', row.get('label', ''))
+                else:
+                    # Cell line data columns: gene_a, gene_b, cell_line, interaction
+                    g_a = row.get('gene_a', '')
+                    g_b = row.get('gene_b', '')
+                    context = row.get('cell_line', '')
+                    interaction = row.get('interaction', '')
+                
                 user_instruction = row.get('user_question', '')
                 
-                # Extract experiment instruction from full_query
+                # Get full_query (user question + experiment instruction)
                 full_query = row.get('full_query', '')
-                if full_query and full_query != user_instruction:
-                    experiment_instruction = full_query[len(user_instruction):].strip()
-                else:
-                    experiment_instruction = None
+                # Use full_query if available, otherwise fall back to user_instruction
+                X = full_query if full_query else user_instruction
                     
-                yield ([g_a, g_b], user_instruction, experiment_instruction, interaction, [g_a, g_b], interaction, cell_line)
+                # yield: (candidate_genes, X=full_query, user_instruction, y, *attributes)
+                yield ([g_a, g_b], X, user_instruction, interaction, [g_a, g_b], interaction, context)
         
         elif task == "immune_response":
             for _, row in df.iterrows():
@@ -142,6 +153,8 @@ def input_loader(
                 columns = ["gene_a", "gene_b", "synonym_a", "synonym_b", "cell_line", "phenotype", "interaction"]
             elif sl_source == 'samson':
                 columns = ["gene_a", "gene_b", "cell_line", "interaction"]
+            elif sl_source == 'yeast':
+                columns = ["array_gene", "query_gene", "condition", "label"]
             else:
                 raise ValueError(f"Unsupported SL source: {sl_source}")
 
@@ -160,6 +173,7 @@ def input_loader(
                         addition_context_temp=addition_context_temp,
                         addition_context_sample=addition_context_sample
                     )
+                    context = cell_line
 
                 elif sl_source == 'samson':
                     g_a, g_b, cell_line, y = sample
@@ -169,12 +183,23 @@ def input_loader(
                         gene_b=g_b,
                         cell_line=cell_line
                     )
+                    context = cell_line
+
+                elif sl_source == 'yeast':
+                    g_a, g_b, condition, y = sample
+
+                    gpt_prompt = user_template.format(
+                        gene_a=g_a,
+                        gene_b=g_b,
+                        condition=condition
+                    )
+                    context = condition
 
                 user_instruction = chat_completion(gpt_prompt, temperature=1, model=rephrase_model).strip('""')
                 experiment_instruction = chat_completion(EXPERIMENT_INSTRUCTION_REPHRASE_TEMPLATE.format(role="biologist", task_instruction_template=agent_template), model=rephrase_model, temperature=1)
-                interaction = y.strip("['']").lower()
+                interaction = y.strip("['']").lower()  # Normalize to lowercase (SL -> sl, non_SL -> non_sl)
 
-                yield ([g_a, g_b], user_instruction, experiment_instruction, interaction, [g_a, g_b], interaction, cell_line)
+                yield ([g_a, g_b], user_instruction, experiment_instruction, interaction, [g_a, g_b], interaction, context)
 
         elif task == 'immune_response':
             cols = [
@@ -364,9 +389,13 @@ def log_check(
             if "P" in response_dict:
                 if response_dict["P"] != None:
                     p_response = response_dict["P"] 
+            # Support both 'CG' (legacy) and 'PA' (new medea core) keys
             if "CG" in response_dict:
                 if response_dict["CG"] != None:
-                    cg_response = response_dict["CG"] 
+                    cg_response = response_dict["CG"]
+            elif "PA" in response_dict:
+                if response_dict["PA"] != None:
+                    cg_response = response_dict["PA"]
             if "R" in response_dict:
                 if response_dict["R"] != None:
                     reason_response = response_dict["R"]
@@ -710,7 +739,10 @@ def split_df_after_checkpoint(
     if task == "targetID":
         cols = ['candidate_genes', 'celltype', 'disease', 'y']
     elif task == "sl":
-        cols = ['gene_a', 'gene_b', 'cell_line', 'interaction']
+        if 'cell_line' in df.columns:
+            cols = ['gene_a', 'gene_b', 'cell_line', 'interaction']
+        else:
+            cols = ['gene_a', 'gene_b', 'condition', 'interaction']
     elif task == "immune_response":
         cols = ["TMB (FMOne mutation burden per MB)", "Neoantigen burden per MB", "Immune phenotype", "response_label"]
 

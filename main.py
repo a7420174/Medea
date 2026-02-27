@@ -54,7 +54,7 @@ from medea.core import medea
 # Evaluation and utilities
 from evaluation.query_template import *
 from medea.tool_space.gpt_utils import chat_completion
-from medea.tool_space.env_utils import get_env_with_error, get_seed, get_backbone_llm
+from medea.tool_space.env_utils import get_env_with_error, get_seed, get_backbone_llm, get_llm_provider
 from utils import (
     evaluate_prediction,
     input_loader,
@@ -151,7 +151,9 @@ Examples:
     parser.add_argument('--cell-line', type=str, default='MCF7',
                         help='Cell line for sl task (default: MCF7)')
     parser.add_argument('--sl-source', type=str, default='samson',
-                        help='SL data source (default: samson). Options: samson (default)')
+                        help='SL data source (default: samson). Options: samson, yeast')
+    parser.add_argument('--condition', type=str, default='BLEO',
+                        help='Experimental condition for yeast SL data (e.g., BLEO, DMS)')
     
     # Immune therapy task specific
     parser.add_argument('--immune-dataset', type=str, default='IMVigor210',
@@ -194,9 +196,10 @@ setting_naming_dict = {
     'o1-mini-2024-09-12': 'o1_mini',
     'gpt-5': 'gpt5',
     'gpt-4o': 'gpt4o',
+    'gpt-4.1': 'gpt41',
     'o3-mini-0131': 'o3_mini',
     'claude': 'claude',
-    'medea': 'medea'
+    'medea': 'medeaGPT'
 }
 
 # Experiment configurations: {setup_name: {user_template, agent_template, judge_prompt}}
@@ -225,7 +228,7 @@ experiment_setup_dict = {
         'agent': target_id_instruction,
         'judge_prompt': TARGETID_REASON_CHECK
     },
-    # Synthetic Lethality Prediction
+    # Synthetic Lethality Prediction (Cell Line)
     'sl_analysis_gpt4o':  {
         'user': sl_query_lineage_openend, 
         'agent': sl_instruction_default, 
@@ -235,6 +238,17 @@ experiment_setup_dict = {
         'user': sl_query_lineage_openend, 
         'agent': sl_instruction_default, 
         'judge_prompt': SL_REASON_CHECK 
+    },
+    # Synthetic Lethality Prediction (Yeast)
+    'sl_yeast_analysis_gpt5': {
+        'user': sl_query_yeast_openend,
+        'agent': None,
+        'judge_prompt': SL_REASON_CHECK
+    },
+    'sl_yeast_analysis_claude': {
+        'user': sl_query_yeast_openend,
+        'agent': None,
+        'judge_prompt': SL_REASON_CHECK
     },
     # ICI Prediction 
     'immune_instruction_none_gpt4o': {
@@ -288,24 +302,6 @@ FULL_INSTURCTION = False  # For panel discussion: True = user + experiment instr
 LLM_JUDGE_MODEL = get_env_with_error("EVALUATION_JUDGE_LLM", default=None, required=False)  # Judge LLM for evaluation
 
 # ============================================================================
-# CONFIGURATION: PROMPT SELECTION
-# ============================================================================
-
-# Select prompt configuration based on task
-if TASK == "targetID":
-    PROMPT_SETTING = "targetid_analysis_gpt4o"
-elif TASK == "sl":
-    PROMPT_SETTING = "sl_analysis_claude"
-else:
-    PROMPT_SETTING = "immune_instruction_b_gpt4o"
-
-# Load prompt templates from selected configuration
-USER_PROMPT = experiment_setup_dict[PROMPT_SETTING]['user']
-AGENT_PROMPT = experiment_setup_dict[PROMPT_SETTING]['agent']
-LLM_JUDGE_PROMPT = experiment_setup_dict[PROMPT_SETTING]['judge_prompt']
-
-
-# ============================================================================
 # CONFIGURATION: TASK-SPECIFIC DATA PATHS
 # ============================================================================
 
@@ -318,8 +314,35 @@ TARGET_DB_PATH = f"targetid-{DISEASE}-{SAMPLE_SEED}.csv"
 # Task 2: Synthetic Lethality (from args)
 SL_SOURCE = args.sl_source
 CELL_LINE = args.cell_line
-SL_DB_QUERY_PATH = f"{SL_SOURCE}-{CELL_LINE}-query-{SAMPLE_SEED}.csv"
-SL_DB_PATH = f"{SL_SOURCE}-{CELL_LINE}-{SAMPLE_SEED}.csv"
+CONDITION = args.condition
+
+# Yeast data uses condition instead of cell_line
+if SL_SOURCE == 'yeast':
+    SL_DB_QUERY_PATH = f"yeast-{CONDITION}-query-{SAMPLE_SEED}.csv"
+    SL_DB_PATH = f"yeast-{CONDITION}-{SAMPLE_SEED}.csv"
+else:
+    SL_DB_QUERY_PATH = f"{SL_SOURCE}-{CELL_LINE}-query-{SAMPLE_SEED}.csv"
+    SL_DB_PATH = f"{SL_SOURCE}-{CELL_LINE}-{SAMPLE_SEED}.csv"
+
+# ============================================================================
+# CONFIGURATION: PROMPT SELECTION
+# ============================================================================
+
+# Select prompt configuration based on task
+if TASK == "targetID":
+    PROMPT_SETTING = "targetid_analysis_gpt4o"
+elif TASK == "sl":
+    if SL_SOURCE == 'yeast':
+        PROMPT_SETTING = "sl_yeast_analysis_gpt5"
+    else:
+        PROMPT_SETTING = "sl_analysis_gpt4o"
+else:
+    PROMPT_SETTING = "immune_instruction_b_gpt4o"
+
+# Load prompt templates from selected configuration
+USER_PROMPT = experiment_setup_dict[PROMPT_SETTING]['user']
+AGENT_PROMPT = experiment_setup_dict[PROMPT_SETTING]['agent']
+LLM_JUDGE_PROMPT = experiment_setup_dict[PROMPT_SETTING]['judge_prompt']
 
 # Task 3: Immune Therapy Response (from args)
 IMMUNE_DATASET = args.immune_dataset
@@ -335,7 +358,7 @@ PATIENT_TABLE_PATH = f"{IMMUNE_DATASET}-patient-{SAMPLE_SEED}.csv"
 # Context mapping for each task
 context_dict = {
     'targetID': DISEASE,
-    'sl': CELL_LINE,
+    'sl': CONDITION if SL_SOURCE == 'yeast' else CELL_LINE,
     'immune_response': IMMUNE_DATASET
 }
 
@@ -405,7 +428,7 @@ def medea_unittest(df, user_template=None, agent_template=None):
 
     # Initialized the agents and actions
     # Display LLM provider configuration
-    llm_provider = get_env_with_error("LLM_PROVIDER_NAME", default="OpenRouter")
+    llm_provider = get_llm_provider()
     print(f"=== LLM Provider: {llm_provider} ===", flush=True)
     
     backbone_llm = get_backbone_llm("gpt-4o")
@@ -813,8 +836,11 @@ if __name__ == "__main__":
         print(f"Disease:           {DISEASE}", flush=True)
         print(f"SCFM:              {SCFM}", flush=True)
     elif TASK == "sl":
-        print(f"Cell Line:         {CELL_LINE}", flush=True)
         print(f"SL Source:         {SL_SOURCE}", flush=True)
+        if SL_SOURCE == 'yeast':
+            print(f"Condition:         {CONDITION}", flush=True)
+        else:
+            print(f"Cell Line:         {CELL_LINE}", flush=True)
     elif TASK == "immune_response":
         print(f"Immune Dataset:    {IMMUNE_DATASET}", flush=True)
         print(f"Patient TPM Root:  {PATIENT_TPM_ROOT}", flush=True)
