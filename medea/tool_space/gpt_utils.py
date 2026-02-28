@@ -74,8 +74,22 @@ def chat_completion(
     if 'claude' in model.lower():
         return _claude_completion(messages, temperature, model, attempts)
     
+    # OpenAI-native models should use OpenAI/Azure/OpenRouter, never Gemini/Claude providers
+    _openai_model_prefixes = ('gpt-', 'o1', 'o3', 'o4')
+    _is_openai_model = any(model.lower().startswith(p) for p in _openai_model_prefixes)
+    
     # --- Route based on LLM_PROVIDER_NAME (for OpenAI-compatible models) ---
     provider = get_llm_provider()
+    
+    if _is_openai_model and provider in ("Gemini", "Claude"):
+        if os.getenv("OPENROUTER_API_KEY"):
+            return _openrouter_completion(messages, temperature, model, attempts, seed, response_format)
+        elif os.getenv("AZURE_OPENAI_API_KEY"):
+            return _azure_completion(messages, temperature, model, seed, response_format)
+        elif os.getenv("OPENAI_API_KEY"):
+            return _openai_completion(messages, temperature, model, attempts, seed, response_format)
+        else:
+            print(f"[chat_completion] OpenAI model '{model}' requested but no OpenAI/Azure/OpenRouter key found, using {provider}", flush=True)
     
     if provider == "OpenRouter":
         return _openrouter_completion(messages, temperature, model, attempts, seed, response_format)
@@ -305,6 +319,9 @@ def _ollama_completion(messages: List[Dict[str, str]], model: str, seed: int) ->
 
 def _gemini_completion(messages: List[Dict[str, str]], temperature: float, model: str) -> str:
     """Handle Google Gemini completion."""
+    wants_json = False
+    gemini_model = model if 'gemini' in model.lower() else os.getenv("GEMINI_MODEL", "gemini-2.0-flash")
+    
     try:
         api_key = get_env_with_error(
             "GEMINI_API_KEY",
@@ -346,12 +363,6 @@ def _gemini_completion(messages: List[Dict[str, str]], temperature: float, model
             gen_config_params["response_mime_type"] = "application/json"
         
         generation_config = genai.types.GenerationConfig(**gen_config_params)
-        
-        # Use the passed model name if it's a gemini model, otherwise fall back to GEMINI_MODEL env var
-        if 'gemini' in model.lower():
-            gemini_model = model
-        else:
-            gemini_model = os.getenv("GEMINI_MODEL", "gemini-2.0-flash")
         
         model_kwargs = {"generation_config": generation_config}
         if system_instruction:

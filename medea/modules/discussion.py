@@ -235,7 +235,7 @@ def trans_confidence(x):
     if 0.8 > x > 0.6: return 0.3
     if 0.9 > x >= 0.8: return 0.5
     if 1 > x >= 0.9: return 0.8
-    if x == 1: return 1
+    return 1
 
 
 def parse_json(model_output):
@@ -318,9 +318,11 @@ def parse_output(tmp, query, rounds, vote_merge=True, attempt=4):
             else:
                 print(f"Warning: {o+r} is not structured as expected: {tmp[o+r]}")
 
-    if c+r in tmp and g+r in tmp and b+r in tmp:
-        tmp['vote_'+str(rounds)] = [tmp['llm_0_pred_'+str(rounds)], tmp['llm_1_pred_'+str(rounds)], tmp['llm_2_pred_'+str(rounds)]]
-        tmp['exps_'+str(rounds)] = [tmp['llm_0_exp_'+str(rounds)], tmp['llm_1_exp_'+str(rounds)], tmp['llm_2_exp_'+str(rounds)]]
+    pred_keys = [f'{p}_pred_{rounds}' for p in [c, g, b]]
+    exp_keys = [f'{p}_exp_{rounds}' for p in [c, g, b]]
+    if all(k in tmp for k in pred_keys) and all(k in tmp for k in exp_keys):
+        tmp['vote_'+str(rounds)] = [tmp[k] for k in pred_keys]
+        tmp['exps_'+str(rounds)] = [tmp[k] for k in exp_keys]
         
         # ========== VOTE RECONCILIATION ==========
         if vote_merge:
@@ -361,7 +363,7 @@ def parse_output(tmp, query, rounds, vote_merge=True, attempt=4):
 
 
 def clean_output(tmp, rounds):
-    co, go, bo = "llm_0" + str(rounds), 'llm_1' + str(rounds), 'llm_2' + str(rounds)
+    co, go, bo = f"llm_0_output_{rounds}", f"llm_1_output_{rounds}", f"llm_2_output_{rounds}"
 
     for o in [co, go, bo]:
         if o in tmp:
