@@ -4,3 +4,5 @@ __pycache__/
 results/
 *.log
 MedeaDB/
+CLAUDE.md
+uv.lock

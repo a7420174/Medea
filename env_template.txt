@@ -13,8 +13,12 @@ MEDEADB_PATH=/path/to/your/MedeaDB
 # ============================================================================
 # REQUIRED: LLM Configuration
 # ============================================================================
+# LLM provider to use for API calls
+# Valid options: OpenRouter, Azure, OpenAI, Claude, Gemini, Ollama, Cerebras, Groq
+LLM_PROVIDER_NAME=OpenRouter
+
 # Primary LLM model for agents
-# Examples: gpt-4o, claude-3-5-sonnet-20241022, gemini-2.0-flash-exp, deepseek-r1:671b
+# Examples: gpt-4o, claude-3-5-sonnet-20241022, gemini-2.5-pro, llama3.1-8b
 BACKBONE_LLM=gpt-4o
 
 # Random seed for reproducibility
@@ -26,40 +30,64 @@ SEED=42
 # OpenRouter API (recommended - provides access to multiple models)
 OPENROUTER_API_KEY=your-openrouter-api-key-here
 
-# OR Azure OpenAI (alternative)
+# OR Azure OpenAI
 AZURE_OPENAI_API_KEY=your-azure-api-key-here
 AZURE_OPENAI_ENDPOINT=https://your-resource.openai.azure.com/
 AZURE_API_VERSION=2024-10-21
 
-# OR Google Gemini (alternative)
+# OR Google Gemini
 GEMINI_API_KEY=your-gemini-api-key-here
-GEMINI_MODEL=gemini-2.0-flash-exp
+GEMINI_MODEL=gemini-2.5-pro
 
-# OR Anthropic Claude (alternative)
+# OR Anthropic Claude
 ANTHROPIC_API_KEY=your-anthropic-api-key-here
 ANTHROPIC_MODEL=claude-3-5-sonnet-20241022
 
-# OR NVIDIA DeepSeek R1 (alternative)
+# OR Cerebras
+CEREBRAS_API_KEY=your-cerebras-api-key-here
+
+# OR Groq
+GROQ_API_KEY=your-groq-api-key-here
+
+# OR Ollama (local)
+OLLAMA_BASE_URL=http://localhost:11434
+
+# OR NVIDIA DeepSeek R1
 NVIDIA_DEEPSEEK_ENDPOINT=https://your-nvidia-endpoint.com/v1
 NVIDIA_DEEPSEEK_API_KEY=your-nvidia-deepseek-api-key-here
 
 # ============================================================================
-# REQUIRED: Additional LLM Settings
+# OPTIONAL: Additional LLM Settings
 # ============================================================================
+# Lightweight model for utility tasks (quality check, tool selection)
+# Falls back to BACKBONE_LLM if not set
+# UTILITY_LLM=gpt-4o
+
 # LLM for paraphrasing queries (defaults to BACKBONE_LLM if not set)
-PARAPHRASER_LLM=gpt-4o
+# PARAPHRASER_LLM=gpt-4o
 
 # LLM for judging paper relevance (defaults to BACKBONE_LLM if not set)
-PAPER_JUDGE_LLM=gpt-4o
+# PAPER_JUDGE_LLM=gpt-4o
 
 # LLM for evaluation judgments (optional)
-EVALUATION_JUDGE_LLM=gpt-4o
+# EVALUATION_JUDGE_LLM=gpt-4o
 
-# LLM provider name for display purposes
-LLM_PROVIDER_NAME=OpenRouter
+# Panelist LLMs for multi-round panel discussion (comma-separated)
+# Falls back to [BACKBONE_LLM x3] if not set
+# Example: PANELIST_LLMS=gemini-2.5-flash,llama3.1-8b,gpt-4o
+# PANELIST_LLMS=
 
-# Use OpenRouter for API calls (true/false)
-USE_OPENROUTER=true
+# ============================================================================
+# OPTIONAL: External Service API Keys
+# ============================================================================
+# OpenAlex API key for literature search
+# OPENALEX_API_KEY=your-openalex-api-key-here
+
+# Hugging Face token for model/dataset access
+# HF_TOKEN=your-hf-token-here
+
+# SambaNova API key
+# SAMBANOVA_API_KEY=your-sambanova-api-key-here
 
 # ============================================================================
 # OPTIONAL: Azure OpenAI Model-specific API Versions
@@ -78,4 +106,3 @@ USE_OPENROUTER=true
 # OPTIONAL: Hugging Face Cache
 # ============================================================================
 # HF_HOME=~/.cache/huggingface
-

@@ -4,13 +4,19 @@ import json
 import os, re, ast, sys
 import time
 import base64
-from typing import Optional
+from typing import List, Optional
 
 # Use relative imports within package
 from ..tool_space.gpt_utils import chat_completion
+from ..tool_space.env_utils import get_backbone_llm, get_utility_llm
 from .prompt_template import *
 
 dotenv.load_dotenv()
+
+
+def _default_model() -> str:
+    """Get the default model from BACKBONE_LLM env var."""
+    return get_backbone_llm("gpt-4o")
 
 def sanitize_prompt_content(text):
     """
@@ -118,7 +124,7 @@ def parse_llm_dict_output(output_str: str) -> Optional[dict]:
     return None
 
 
-def reconcile_votes_with_llm(certainty_vote: dict, query: str, max_attempts: int = 4) -> dict:
+def reconcile_votes_with_llm(certainty_vote: dict, query: str, max_attempts: int = 4, model: Optional[str] = None) -> dict:
     """
     Reconcile and normalize vote dictionary using LLM with robust parsing.
     
@@ -136,7 +142,7 @@ def reconcile_votes_with_llm(certainty_vote: dict, query: str, max_attempts: int
         return certainty_vote
     
     original_vote = certainty_vote.copy()
-    model_name = os.getenv("BACKBONE_LLM", "gpt-4o")
+    model_name = model or _default_model()
     # Only use JSON mode for models that support response_format (not o-series or gpt-5)
     _no_json_mode = ('o1' in model_name or 'o3' in model_name or 'o4' in model_name
                      or 'gpt-5' in model_name)
@@ -293,7 +299,7 @@ def parse_json(model_output):
     return "ERR_SYNTAX"
 
 
-def parse_output(tmp, query, rounds, vote_merge=True, attempt=4):
+def parse_output(tmp, query, rounds, vote_merge=True, attempt=4, reconcile_model: Optional[str] = None):
     c, g, b = "llm_0", "llm_1", "llm_2"
     r = "_output_"+str(rounds)
     
@@ -326,7 +332,7 @@ def parse_output(tmp, query, rounds, vote_merge=True, attempt=4):
         
         # ========== VOTE RECONCILIATION ==========
         if vote_merge:
-            certainty_vote = reconcile_votes_with_llm(certainty_vote, query, max_attempts=attempt)
+            certainty_vote = reconcile_votes_with_llm(certainty_vote, query, max_attempts=attempt, model=reconcile_model)
         # ==========
         for v in certainty_vote:
             print(v, flush=True)
@@ -442,7 +448,9 @@ def _extract_answer_from_plaintext(text):
     }
 
 
-def gpt_gen_ans(query, model='gpt-4o', attempts=3, convincing_samples=None, additional_instruc=None, intervene=False):
+def gpt_gen_ans(query, model=None, attempts=3, convincing_samples=None, additional_instruc=None, intervene=False):
+    if model is None:
+        model = _default_model()
     i = 0
     last_output = None
     while i < attempts:
@@ -481,7 +489,9 @@ def gpt_gen_ans(query, model='gpt-4o', attempts=3, convincing_samples=None, addi
     
 
 
-def llm_debate(query, tmp, rounds, model_name='gpt-4o', llm_name='llm_0', convincing_samples=None):
+def llm_debate(query, tmp, rounds, model_name=None, llm_name='llm_0', convincing_samples=None):
+    if model_name is None:
+        model_name = _default_model()
     r = '_' + str(rounds-1)
 
     if f'{llm_name}_output_'+str(rounds) not in tmp and 'debate_prompt'+ r in tmp and len(tmp['debate_prompt'+r]):
@@ -525,20 +535,27 @@ def llm_debate(query, tmp, rounds, model_name='gpt-4o', llm_name='llm_0', convin
 
 
 def multi_round_discussion(
-    query, 
-    mod='diff_context', 
-    panelist_llms=[
-        'gemini', 
-        'gpt-4o', 
-        'gpt-4o-mini'
-    ],
-    include_llm=True, 
-    proposal_response=None, 
-    coding_response=None, 
-    reasoning_response=None, 
-    vote_merge=True, 
-    round=1
+    query,
+    mod='diff_context',
+    panelist_llms: Optional[List[str]] = None,
+    include_llm=True,
+    proposal_response=None,
+    coding_response=None,
+    reasoning_response=None,
+    vote_merge=True,
+    round=1,
+    backbone_model: Optional[str] = None,
+    auditor_model: Optional[str] = None,
+    formulator_model: Optional[str] = None,
     ):
+    if panelist_llms is None:
+        panelist_llms = [_default_model(), _default_model(), _default_model()]
+    if backbone_model is None:
+        backbone_model = _default_model()
+    if auditor_model is None:
+        auditor_model = os.getenv("AUDITOR_LLM", get_utility_llm())
+    if formulator_model is None:
+        formulator_model = os.getenv("FORMULATOR_LLM", backbone_model)
     
     tmp = {}
     debate_query = query
@@ -634,9 +651,9 @@ def multi_round_discussion(
         agents_ans = agents_ans_for_panel
         
         if include_llm:
-            print(f"----- Hypothesis from Backbone LLM: {os.getenv('BACKBONE_LLM')} -----", flush=True)
+            print(f"----- Hypothesis from Backbone LLM: {backbone_model} -----", flush=True)
             backbone_query = BACKBONE_QUERY_PROMPT.format(query=safe_query)
-            llm_hypothesis = chat_completion(backbone_query, model=os.getenv("BACKBONE_LLM"))
+            llm_hypothesis = chat_completion(backbone_query, model=backbone_model)
             safe_llm_hypothesis = sanitize_prompt_content(str(llm_hypothesis))
             backbone_hypothesis = BACKBONE_NORMALIZER.format(user_query=safe_query, agent_hypo=safe_llm_hypothesis)
             print(f"{llm_hypothesis}\n", flush=True)
@@ -663,7 +680,6 @@ def multi_round_discussion(
         audit_report = ""
         if include_llm:
             print("----- Evidence Auditor: cross-source analysis -----", flush=True)
-            auditor_model = os.getenv("AUDITOR_LLM", "gpt-4.1-mini")
             audit_prompt = EVIDENCE_AUDITOR_PROMPT.format(
                 query=safe_query,
                 coding_output=coding_hypothesis,
@@ -692,7 +708,7 @@ def multi_round_discussion(
     tmp['llm_2_output_0'] = gpt_gen_ans(debate_query, model=panelist_3, additional_instruc=None, intervene=False)
 
     tmp = clean_output(tmp, 0)
-    tmp = parse_output(tmp, query, 0, vote_merge=vote_merge)
+    tmp = parse_output(tmp, query, 0, vote_merge=vote_merge, reconcile_model=backbone_model)
 
 
     # Phase2: Multi-Round Discussion
@@ -703,7 +719,7 @@ def multi_round_discussion(
         tmp = llm_debate(debate_query, tmp, llm_name='llm_2', rounds=r, model_name=panelist_3)
         
         tmp = clean_output(tmp, r)
-        tmp = parse_output(tmp, query, r, vote_merge=vote_merge)
+        tmp = parse_output(tmp, query, r, vote_merge=vote_merge, reconcile_model=backbone_model)
     
     # Find keys that start with 'weighted_max_' and extract the highest suffix
     majority_keys = [key for key in tmp if key.startswith("weighted_max_")]
@@ -756,8 +772,6 @@ def multi_round_discussion(
         query=query, answer=panel_conclusion, agent_ans=original_ans
     )
     
-    # Use a separate formulator model if configured, otherwise use backbone
-    formulator_model = os.getenv("FORMULATOR_LLM", os.getenv("BACKBONE_LLM"))
     formulated = chat_completion(hypo_prompt, model=formulator_model)
     
     if include_llm:

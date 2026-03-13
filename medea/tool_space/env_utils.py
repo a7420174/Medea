@@ -184,6 +184,34 @@ def get_utility_llm() -> str:
     )
 
 
+def get_panelist_llms() -> list:
+    """
+    Get the PANELIST_LLMS environment variable as a list of model names.
+
+    Set PANELIST_LLMS in .env as a comma-separated list of model names.
+    Example: PANELIST_LLMS=gemini-2.5-flash,llama3.1-8b,gpt-4o
+
+    Falls back to [BACKBONE_LLM, BACKBONE_LLM, BACKBONE_LLM] if not set.
+
+    Returns:
+        list: List of LLM model names for panel discussion
+    """
+    raw = get_env_with_error(
+        "PANELIST_LLMS",
+        default=None,
+        required=False,
+        description="specifying LLM models for panel discussion",
+    )
+
+    if raw:
+        llms = [m.strip() for m in raw.split(",") if m.strip()]
+        if llms:
+            return llms
+
+    backbone = get_backbone_llm("gpt-4o")
+    return [backbone, backbone, backbone]
+
+
 def get_seed(default: int = 42) -> int:
     """
     Get the SEED environment variable with proper error handling.

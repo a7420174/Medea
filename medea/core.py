@@ -451,13 +451,8 @@ def medea(
 
     # Default panelist LLMs if not provided
     if panelist_llms is None:
-        import os
-
-        panelist_llms = [
-            "gemini-2.5-flash",
-            "o3-mini-0131",
-            os.getenv("BACKBONE_LLM", "gpt-4o"),
-        ]
+        from .tool_space.env_utils import get_panelist_llms
+        panelist_llms = get_panelist_llms()
 
     # Each agent output is assigned an LLM to join panel discussion
     hypothesis_response, llm_hypothesis_response = multi_round_discussion(
