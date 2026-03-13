@@ -151,7 +151,7 @@ def chat_completion(
     if "deepseek-r1:671b" in model:
         return _nvidia_deepseek_completion(messages, temperature, attempts, seed)
     if model in ["deepseek-r1:70b", "llama3.3"]:
-        return _ollama_completion(messages, model, seed)
+        return _ollama_completion(messages, model, temperature, seed)
     if "gemini" in model.lower():
         return _gemini_completion(messages, temperature, model)
     if "claude" in model.lower():
@@ -162,7 +162,7 @@ def chat_completion(
     _is_openai_model = any(model.lower().startswith(p) for p in _openai_model_prefixes)
 
     # Providers that only support their own model catalog (not OpenAI models)
-    _non_openai_providers = ("Gemini", "Claude", "Cerebras", "Groq")
+    _non_openai_providers = ("Gemini", "Claude", "Cerebras", "Groq", "Ollama")
 
     # --- Route based on LLM_PROVIDER_NAME (for OpenAI-compatible models) ---
     provider = get_llm_provider()
@@ -200,6 +200,8 @@ def chat_completion(
         return _claude_completion(messages, temperature, model, attempts)
     elif provider == "Gemini":
         return _gemini_completion(messages, temperature, model)
+    elif provider == "Ollama":
+        return _ollama_completion(messages, model, temperature, seed)
     elif provider in _OPENAI_COMPATIBLE_PROVIDERS:
         cfg = _OPENAI_COMPATIBLE_PROVIDERS[provider]
         return _openai_compatible_completion(
@@ -386,17 +388,17 @@ def _nvidia_deepseek_completion(
         return f"I cannot help with it - NVIDIA DeepSeek initialization error: {str(e)[:100]}"
 
 
-def _ollama_completion(messages: List[Dict[str, str]], model: str, seed: int) -> str:
+def _ollama_completion(messages: List[Dict[str, str]], model: str, temperature: float = 0.4, seed: int = 42) -> str:
     """Handle Ollama model completion."""
     try:
         response: ChatResponse = OllamaChat(
-            model=model, messages=messages, options={"seed": seed}
+            model=model, messages=messages, options={"seed": seed, "temperature": temperature}
         )
 
         content = response.message.content
 
-        # Handle reasoning models that use <think> tags
-        if "r1" in model and "</think>" in content:
+        # Handle reasoning/thinking models that use <think> tags (deepseek-r1, qwen3, etc.)
+        if "</think>" in content:
             content = content.split("</think>")[-1].strip()
 
         return content
