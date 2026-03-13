@@ -1,6 +1,6 @@
 from typing import List
 
-from agentlite.actions.BaseAction import BaseAction
+from .langchain_agents import BaseAction, AgentAct, TaskPackage
 from .prompt_utils import (
     DEFAULT_PROMPT,
     PROMPT_TOKENS,
@@ -9,7 +9,6 @@ from .prompt_utils import (
     format_agent_call_example,
     task_chain_format,
 )
-from agentlite.commons import AgentAct, TaskPackage
 
 
 class PromptGen:
@@ -80,7 +79,7 @@ class BasePromptGen(PromptGen):
 
     def __constraint_prompt__(self):
         if self.constraint:
-            return f"""{PROMPT_TOKENS["constraint"]['begin']}\n{self.constraint}\n{PROMPT_TOKENS["constraint"]['end']}"""
+            return f"""{PROMPT_TOKENS["constraint"]["begin"]}\n{self.constraint}\n{PROMPT_TOKENS["constraint"]["end"]}"""
         else:
             return ""
 
@@ -89,7 +88,7 @@ class BasePromptGen(PromptGen):
         return history
 
     def __role_prompt__(self, agent_role):
-        prompt = f"""{PROMPT_TOKENS["role"]['begin']}\n{agent_role}\n{PROMPT_TOKENS["role"]['end']}"""
+        prompt = f"""{PROMPT_TOKENS["role"]["begin"]}\n{agent_role}\n{PROMPT_TOKENS["role"]["end"]}"""
         return prompt
 
     def __act_doc_prompt__(self, actions: List[BaseAction], params_doc_flag=True):
@@ -104,15 +103,15 @@ class BasePromptGen(PromptGen):
             ]
         else:
             action_doc = {act.action_name: act.action_desc for act in actions}
-        prompt = f"""{PROMPT_TOKENS["action"]['begin']}\n{action_doc}\n{PROMPT_TOKENS["action"]['end']}"""
+        prompt = f"""{PROMPT_TOKENS["action"]["begin"]}\n{action_doc}\n{PROMPT_TOKENS["action"]["end"]}"""
         return prompt
 
     def __prompt_example__(self, prompt_example: str):
-        prompt = f"""{PROMPT_TOKENS["example"]['begin']}\n{prompt_example}{PROMPT_TOKENS["example"]['end']}\n"""
+        prompt = f"""{PROMPT_TOKENS["example"]["begin"]}\n{prompt_example}{PROMPT_TOKENS["example"]["end"]}\n"""
         return prompt
 
     def __act_format_example__(self, act_call_example: str):
-        prompt = f"""{DEFAULT_PROMPT["action_format"]}{PROMPT_TOKENS["action_format"]['begin']}\n{act_call_example}{PROMPT_TOKENS["action_format"]['end']}\n"""
+        prompt = f"""{DEFAULT_PROMPT["action_format"]}{PROMPT_TOKENS["action_format"]["begin"]}\n{act_call_example}{PROMPT_TOKENS["action_format"]["end"]}\n"""
         return prompt
 
     def action_prompt(
@@ -162,7 +161,7 @@ class BasePromptGen(PromptGen):
             prompt += self.__act_format_example__(act_call_example)
         # adding action observation chain
         cur_session = task_chain_format(task, action_chain)
-        prompt += f"""{PROMPT_TOKENS["execution"]['begin']}\n{cur_session}\n"""
+        prompt += f"""{PROMPT_TOKENS["execution"]["begin"]}\n{cur_session}\n"""
         # adding inference token
         prompt += """Return the next action:"""
         return prompt
@@ -186,7 +185,7 @@ class ManagerPromptGen(BasePromptGen):
         self.prompt_type = "ManagerPromptGen"
 
     def __team_prompt__(self, labor_agents_doc) -> str:
-        prompt = f"""{PROMPT_TOKENS["team"]['begin']}\n{labor_agents_doc}\n{PROMPT_TOKENS["team"]['end']}"""
+        prompt = f"""{PROMPT_TOKENS["team"]["begin"]}\n{labor_agents_doc}\n{PROMPT_TOKENS["team"]["end"]}"""
         return prompt
 
     def action_prompt(
@@ -245,7 +244,7 @@ class ManagerPromptGen(BasePromptGen):
             prompt += self.__act_format_example__(format_example)
         # adding action observation chain
         cur_session = task_chain_format(task, action_chain)
-        prompt += f"""{PROMPT_TOKENS["execution"]['begin']}\n{cur_session}\n"""
+        prompt += f"""{PROMPT_TOKENS["execution"]["begin"]}\n{cur_session}\n"""
         # adding inference token
         prompt += """Now, return the most appropriate action to take next:"""
         return prompt

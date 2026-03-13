@@ -1,12 +1,13 @@
 """
 Setup configuration for Medea package.
 """
+
 from setuptools import setup, find_packages
 from pathlib import Path
 
 # Read the contents of README file
 this_directory = Path(__file__).parent
-long_description = (this_directory / "README.md").read_text(encoding='utf-8')
+long_description = (this_directory / "README.md").read_text(encoding="utf-8")
 
 setup(
     name="medea",
@@ -17,7 +18,16 @@ setup(
     long_description=long_description,
     long_description_content_type="text/markdown",
     url="https://github.com/mims-harvard/Medea-1.0",
-    packages=find_packages(exclude=["evaluation", "evaluation.*", "results", "results.*", "plots", "plots.*"]),
+    packages=find_packages(
+        exclude=[
+            "evaluation",
+            "evaluation.*",
+            "results",
+            "results.*",
+            "plots",
+            "plots.*",
+        ]
+    ),
     classifiers=[
         "Development Status :: 4 - Beta",
         "Intended Audience :: Science/Research",
@@ -33,16 +43,19 @@ setup(
     python_requires=">=3.9",
     install_requires=[
         # Core dependencies
-        "agentlite-llm>=0.1.0",
-        "pandas<2.0.0",
+        "langchain>=0.1.0",
+        "langchain-core>=0.1.0",
+        "langchain-openai>=0.0.5",
+        "langchain-anthropic>=0.1.0",
+        "langchain-google-genai>=0.0.5",
+        "langchain-community>=0.0.20",
+        "pandas>=2.2.3",
         "numpy>=1.24.0",
-        
         # LLM and AI
         "openai>=1.0.0",
         "anthropic>=0.20.0",
-        
         # Google AI/Gemini
-        "google-generativeai>=0.8.4",
+        "google-genai>=0.1.0",
         "google-ai-generativelanguage>=0.6.15",
         "google-api-core>=2.24.2",
         "google-api-python-client>=2.166.0",
@@ -51,7 +64,6 @@ setup(
         "googleapis-common-protos>=1.69.2",
         "grpcio>=1.71.0",
         "grpcio-status>=1.71.0",
-        
         # NLP and embeddings
         "sentence-transformers>=2.2.0",
         "FlagEmbedding>=1.2.0",
@@ -65,27 +77,23 @@ setup(
         "spacy-loggers>=1.0.0",
         "nltk>=3.8.0",
         "keybert>=0.8.0",
-        
         # Machine Learning
         "scikit-learn>=1.3.0",
         "scipy>=1.11.0",
         "peft>=0.4.0",
         "umap-learn>=0.5.0",
         "ollama>=0.4.7",
-        
         # Data processing
         "datasets>=2.0.0",
         "pyarrow>=10.0.0",
         "h5py>=3.0.0",
         "openpyxl>=3.0.0",
         "dill>=0.3.0",
-        
         # Bioinformatics
         "biothings-client>=0.3.0",
         "mygene>=3.2.0",
         "gseapy>=1.0.0",
         "comut>=0.0.3",
-        
         # Web and API
         "requests>=2.31.0",
         "requests-cache>=1.0.0",
@@ -94,23 +102,19 @@ setup(
         "httpx-sse>=0.3.0",
         "aiohttp>=3.8.0",
         "lxml>=4.9.0",
-        
         # Search and retrieval
         "duckduckgo-search>=3.0.0",
         "wikipedia>=1.4.0",
         "ir-datasets>=0.5.0",
-        
         # Visualization
         "matplotlib>=3.7.0",
         "seaborn>=0.12.0",
         "plotly>=5.0.0",
         "palettable>=3.3.0",
-        
         # Monitoring and logging
         "wandb>=0.15.0",
         "rich>=13.0.0",
         "psutil>=5.9.0",
-        
         # Utilities
         "python-dotenv>=1.0.0",
         "pydantic>=2.0.0",
@@ -158,4 +162,3 @@ setup(
     },
     include_package_data=True,
 )
-

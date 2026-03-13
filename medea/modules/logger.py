@@ -1,8 +1,8 @@
 import streamlit as st
-from agentlite.commons import AgentAct, TaskPackage
-from agentlite.logging.base import BaseAgentLogger
+from .langchain_agents import AgentAct, TaskPackage, BaseAgentLogger
 
 from .utils import Proposal, CodeSnippet, ReasoningPackage
+
 
 class UILogger(BaseAgentLogger):
     def __init__(
@@ -16,16 +16,16 @@ class UILogger(BaseAgentLogger):
         self.FLAG_PRINT = FLAG_PRINT  # whether print the log into terminal
         self.OBS_OFFSET = OBS_OFFSET
         self.PROMPT_DEBUG_FLAG = PROMPT_DEBUG_FLAG
-        
+
     def __save_log__(self, log_str: str):
         with st.chat_message("assistant"):
             st.markdown(log_str)
         # st.session_state.messages.append({"role": "assistant", "content": log_str})
-        
+
     def receive_task(self, task: TaskPackage, agent_name: str):
         log_str = f"""Agent {agent_name} """
         log_str += f"""receives the following TaskPackage:\n"""
-        
+
     def execute_task(self, task: TaskPackage = None, agent_name: str = None, **kwargs):
         log_str = f"""{agent_name} starts execution on TaskPackage {task.task_id}===="""
         # self.__save_log__(log_str=log_str)
@@ -56,7 +56,7 @@ class UILogger(BaseAgentLogger):
         elif self.OBS_OFFSET is not None and len(obs) > self.OBS_OFFSET:
             obs = obs[: self.OBS_OFFSET] + "[TLDR]"
         log_str = f"""**Observation:**\n{obs}"""
-        if 'import' in obs and 'Step-by-Step Procedure:' not in obs:
+        if "import" in obs and "Step-by-Step Procedure:" not in obs:
             self.__save_log__(log_str)
         # self.__save_log__(log_str)
 

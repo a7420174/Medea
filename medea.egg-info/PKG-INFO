@@ -22,14 +22,19 @@ Classifier: Programming Language :: Python :: 3.11
 Requires-Python: >=3.9
 Description-Content-Type: text/markdown
 License-File: LICENSE
-Requires-Dist: agentlite-llm>=0.1.0
-Requires-Dist: tooluniverse>=0.1.0
-Requires-Dist: pandas<2.0.0
+Requires-Dist: langchain>=0.1.0
+Requires-Dist: langchain-core>=0.1.0
+Requires-Dist: langchain-openai>=0.0.5
+Requires-Dist: langchain-anthropic>=0.1.0
+Requires-Dist: langchain-google-genai>=0.0.5
+Requires-Dist: langchain-community>=0.0.20
+Requires-Dist: langchain-text-splitters>=0.0.0
+Requires-Dist: pandas>=2.2.3
 Requires-Dist: numpy>=1.24.0
 Requires-Dist: openai>=1.10
 Requires-Dist: ollama>=0.4.7
 Requires-Dist: anthropic>=0.20.0
-Requires-Dist: google-generativeai>=0.8.4
+Requires-Dist: google-genai>=0.1.0
 Requires-Dist: google-ai-generativelanguage>=0.6.15
 Requires-Dist: google-api-core>=2.24.2
 Requires-Dist: google-api-python-client>=2.166.0
@@ -106,6 +111,8 @@ Requires-Dist: joblib>=1.3.0
 Requires-Dist: regex>=2023.0.0
 Requires-Dist: pyyaml>=6.0.0
 Requires-Dist: certifi>=2023.0.0
+Provides-Extra: tools
+Requires-Dist: tooluniverse>=1.0.0; extra == "tools"
 Provides-Extra: dev
 Requires-Dist: pytest>=7.4.0; extra == "dev"
 Requires-Dist: pytest-cov>=4.1.0; extra == "dev"

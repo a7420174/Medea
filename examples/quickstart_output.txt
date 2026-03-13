@@ -1,0 +1,37 @@
+================================================================================
+MEDEA QUICKSTART EXAMPLE
+================================================================================
+Initialized LLM: gpt-oss-120b (via Cerebras)
+Initialized LLM: gpt-oss-120b (via Cerebras)
+Initialized LLM: gpt-oss-120b (via Cerebras)
+
+[Setup] Configuring agent actions...
+Loaded 8 checker functions: ['celltype_avaliability_checker', 'concept_name_checker', 'context_avalibility_checker', 'disease_name_checker', 'enrichr_gene_name_checker', 'humanbase_context_checker', 'transcriptformer_context_checker', 'yeast_gene_name_checker']
+[Setup] Initializing modules...
+
+[Query] Considering the following gene list: CD79A, MS4A1, IGJ, CD3D, FCER1A, and FCGR3A.
+    Which gene is the most potential therapeutic target for rheumatoid arthritis (RA) 
+    in CD4+ alpha-beta T cells?
+
+[Execution] Running Medea multi-agent system...
+--------------------------------------------------------------------------------
+
+[MEDEA] Starting parallel execution: Research Planning + In-silico Experiment + Literature Reasoning
+[MEDEA] Launching in-silico experiment process...
+[MEDEA] Launching literature reasoning process...
+[MEDEA] Experiment analysis process started (PID: 98934)
+[MEDEA] Literature reasoning process started (PID: 98937)
+[MEDEA] Both processes running in parallel...
+Reasoning agent call failed (attempt 1/1): Error code: 429 - {'message': "We're experiencing high traffic right now! Please try again soon.", 'type': 'too_many_requests_error', 'param': 'queue', 'code': 'queue_exceeded'}
+Research plan agent call failed (attempt 1/1): ResearchPlanDraft.__call__() got an unexpected keyword argument 'kwargs'
+
+[MEDEA] Collecting results from parallel processes...
+[MEDEA] ✓ Analysis process completed successfully
+[MEDEA] ✓ Literature reasoning process completed successfully
+[Research Plan]: None
+
+[Evidence Grading] Analysis agent: FAILED/ABSTAINED
+[Evidence Grading] Literature reasoning agent: FAILED/ABSTAINED
+----- Hypothesis from Backbone LLM: gpt-oss-120b -----
+[chat_completion] Cerebras (model=gpt-oss-120b) attempt 1/3 failed: Error code: 429 - {'message': "We're experiencing high traffic right now! Please try again soon.", 'type': 'too_many_requests_error', 'param': 'queue'
+[chat_completion] Retrying in 2s...

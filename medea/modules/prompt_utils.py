@@ -1,9 +1,9 @@
 import json
 
-from agentlite.actions.BaseAction import BaseAction
-from agentlite.agents.agent_utils import AGENT_CALL_ARG_KEY
-from agentlite.commons import AgentAct, TaskPackage
+from .langchain_agents import BaseAction, AgentAct, TaskPackage
 from .utils import Proposal, CodeSnippet
+
+AGENT_CALL_ARG_KEY = "agent_call"
 
 PROMPT_TASK_KEY = "task"
 PROMPT_ACT_OBS_KEY = "act_obs"
@@ -35,7 +35,7 @@ CONSTRAITS = {
 }
 
 DEFAULT_PROMPT = {
-    "agent_instruction": f"""You are an intelligent agent. Follow your {PROMPT_TOKENS["role"]['begin']} and {PROMPT_TOKENS["action"]['begin']} to take actions.
+    "agent_instruction": f"""You are an intelligent agent. Follow your {PROMPT_TOKENS["role"]["begin"]} and {PROMPT_TOKENS["action"]["begin"]} to take actions.
 
 CRITICAL: Generate EXACTLY ONE action per response. No explanations, reasoning, or multiple actions.
 
@@ -46,17 +46,19 @@ CRITICAL GUIDELINES:
 * Take one step at a time
 
 Return only a single Action in the correct format.""",
-    "manager_instruction": f"""You are a manager agent. You can assign a task to those agents in your team. Follow your {PROMPT_TOKENS["role"]['begin']}, {PROMPT_TOKENS["action"]['begin']}, {PROMPT_TOKENS["team"]['begin']} to take actions.""",
+    "manager_instruction": f"""You are a manager agent. You can assign a task to those agents in your team. Follow your {PROMPT_TOKENS["role"]["begin"]}, {PROMPT_TOKENS["action"]["begin"]}, {PROMPT_TOKENS["team"]["begin"]} to take actions.""",
     "constraint": f"""{CONSTRAITS["simple"]}""",
     "action_format": "Using the following action format example to generate well formatted actions.\n",
     "not_completed": "Agent could not complete the task within the allowed steps. Returning partial results or abstaining.",
 }
+
 
 class ObjectEncoder(json.JSONEncoder):
     def default(self, obj):
         if not isinstance(obj, str):
             return str(obj)
         return json.JSONEncoder.default(self, obj)
+
 
 def format_act_params_example(actions: list[BaseAction]):
     """

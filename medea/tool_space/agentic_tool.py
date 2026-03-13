@@ -4,7 +4,7 @@ import time
 import hashlib
 import tempfile
 from multiprocessing import freeze_support
-from agentlite.commons import TaskPackage
+from medea.modules.langchain_agents import TaskPackage
 
 # Use relative imports within the package
 from ..modules.literature_reasoning import *
@@ -37,7 +37,7 @@ def _cache_key_to_path(cache_key: str) -> str:
 
 def _read_call_count() -> int:
     try:
-        with open(_BUDGET_FILE, 'r') as f:
+        with open(_BUDGET_FILE, "r") as f:
             return json.load(f).get("count", 0)
     except (FileNotFoundError, json.JSONDecodeError):
         return 0
@@ -45,7 +45,7 @@ def _read_call_count() -> int:
 
 def _write_call_count(count: int):
     _ensure_cache_dir()
-    with open(_BUDGET_FILE, 'w') as f:
+    with open(_BUDGET_FILE, "w") as f:
         json.dump({"count": count}, f)
 
 
@@ -65,19 +65,19 @@ def reset_call_budget():
 def reasoning_module(query: str, reason_agent):
     """
     Execute reasoning agent and return the reasoning content as a string.
-    
+
     Args:
         query: The research question to analyze
         reason_agent: The reasoning agent instance
-        
+
     Returns:
         str: The reasoning content with citations, or error message
     """
     task_dict = {"user_query": query, "hypothesis": None}
     reason_taskpack = TaskPackage(instruction=str(task_dict))
-    
+
     reasoning_response = reason_agent(reason_taskpack)
-            
+
     # Handle dict response (new format after ReasonFinishAction fix)
     if isinstance(reasoning_response, dict) and "user_query" in reasoning_response:
         user_query_data = reasoning_response["user_query"]
@@ -88,38 +88,41 @@ def reasoning_module(query: str, reason_agent):
 
 
 def scientific_reasoning_agent(
-        user_instruction, 
-        llm_name=os.getenv("BACKBONE_LLM"), 
-        reason_agent_tmp=0.4,
-        reason_action_tmp=0.4,
-        verbose=False,
-    ):
+    user_instruction,
+    llm_name=os.getenv("BACKBONE_LLM"),
+    reason_agent_tmp=0.4,
+    reason_action_tmp=0.4,
+    verbose=False,
+):
     """
     Scientific reasoning agent with file-based caching and call budget.
-    
+
     Uses file-system cache (works across subprocess.Popen and multiprocessing).
     Enforces a per-session call budget (MAX_REASONING_AGENT_CALLS env var, default 2).
     Call reset_call_budget() between samples to reset.
     """
     _ensure_cache_dir()
     max_calls = int(os.environ.get("MAX_REASONING_AGENT_CALLS", "6"))
-    
+
     # --- File-based cache check ---
     cache_key = _normalize_query(user_instruction)
     cache_path = _cache_key_to_path(cache_key)
     if os.path.exists(cache_path):
         try:
-            with open(cache_path, 'r') as f:
+            with open(cache_path, "r") as f:
                 cached = json.load(f)
-            print(f"[scientific_reasoning_agent] Cache HIT — reusing previous result", flush=True)
+            print(
+                f"[scientific_reasoning_agent] Cache HIT — reusing previous result",
+                flush=True,
+            )
             return cached["result"]
         except (json.JSONDecodeError, KeyError):
             pass  # Corrupted cache, re-run
-    
+
     # --- File-based call budget check ---
     call_count = _read_call_count() + 1
     _write_call_count(call_count)
-    
+
     if call_count > max_calls:
         msg = (
             f"[scientific_reasoning_agent] Call budget exceeded ({max_calls} calls max per session). "
@@ -127,9 +130,12 @@ def scientific_reasoning_agent(
         )
         print(msg, flush=True)
         return msg
-    
-    print(f"[scientific_reasoning_agent] Call {call_count}/{max_calls} — running full pipeline", flush=True)
-    
+
+    print(
+        f"[scientific_reasoning_agent] Call {call_count}/{max_calls} — running full pipeline",
+        flush=True,
+    )
+
     freeze_support()
     reason_llm_config_dict = {"temperature": reason_agent_tmp}
     reason_llm_config = LLMConfig(reason_llm_config_dict)
@@ -139,21 +145,27 @@ def scientific_reasoning_agent(
     reason_actions = [
         LiteratureSearch(model_name=llm_name, verbose=verbose),
         PaperJudge(model_name=llm_name, verbose=verbose),
-        OpenScholarReasoning(tmp=reason_action_tmp, llm_provider=llm_name, model_name=llm_name, verbose=verbose)
+        OpenScholarReasoning(
+            tmp=reason_action_tmp,
+            llm_provider=llm_name,
+            model_name=llm_name,
+            verbose=verbose,
+        ),
     ]
-    reason_agent = LiteratureReasoning(llm=reason_llm, actions=reason_actions, logger=logger)
+    reason_agent = LiteratureReasoning(
+        llm=reason_llm, actions=reason_actions, logger=logger
+    )
     result = reasoning_module(user_instruction, reason_agent)
-    
+
     # --- Cache result to file ---
     result_str = str(result) if not isinstance(result, str) else result
     try:
-        with open(cache_path, 'w') as f:
+        with open(cache_path, "w") as f:
             json.dump({"result": result_str, "timestamp": time.time()}, f)
     except Exception:
         pass  # Non-critical if cache write fails
-    
-    return result
 
+    return result
 
 
 if __name__ == "__main__":

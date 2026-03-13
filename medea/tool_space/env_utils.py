@@ -1,50 +1,60 @@
 """
 Centralized environment variable management with helpful error messages.
 """
+
 import os
 from typing import Optional
 
 # Valid LLM provider names
-VALID_LLM_PROVIDERS = ["OpenRouter", "Azure", "OpenAI", "Claude", "Gemini"]
+VALID_LLM_PROVIDERS = [
+    "OpenRouter",
+    "Azure",
+    "OpenAI",
+    "Claude",
+    "Gemini",
+    "Ollama",
+    "Cerebras",
+    "Groq",
+]
 
 
 def get_env_with_error(
     var_name: str,
     default: Optional[str] = None,
     required: bool = False,
-    description: str = None
+    description: str = None,
 ) -> Optional[str]:
     """
     Get an environment variable with a helpful error message if not set.
-    
+
     Args:
         var_name: Name of the environment variable
         default: Default value if not set
         required: Whether this variable is required
         description: Description of what this variable is used for
-        
+
     Returns:
         The environment variable value or default
-        
+
     Raises:
         EnvironmentError: If required=True and variable is not set
     """
     value = os.getenv(var_name)
-    
+
     if value is None:
         if required:
             error_msg = f"\n\n❌ {var_name} environment variable is not set!\n\n"
-            
+
             if description:
                 error_msg += f"This variable is required for: {description}\n\n"
-            
+
             error_msg += "To fix this issue:\n"
             error_msg += "1. Create a .env file in your project root directory\n"
             error_msg += f"2. Add the following line to the .env file:\n"
             error_msg += f"   {var_name}=<your-value-here>\n"
             error_msg += "3. Or set it directly in your terminal:\n"
             error_msg += f"   export {var_name}=<your-value-here>\n\n"
-            
+
             # Add specific guidance for common variables
             if var_name == "MEDEADB_PATH":
                 error_msg += "Example:\n"
@@ -53,48 +63,57 @@ def get_env_with_error(
                 error_msg += "Example:\n"
                 error_msg += "   BACKBONE_LLM=gpt-4o\n"
                 error_msg += "   or BACKBONE_LLM=claude-3-5-sonnet-20241022\n\n"
-            elif var_name in ["AZURE_OPENAI_API_KEY", "OPENROUTER_API_KEY", "GEMINI_API_KEY", "ANTHROPIC_API_KEY"]:
-                error_msg += f"You need to obtain an API key from the respective provider.\n\n"
+            elif var_name in [
+                "AZURE_OPENAI_API_KEY",
+                "OPENROUTER_API_KEY",
+                "GEMINI_API_KEY",
+                "ANTHROPIC_API_KEY",
+            ]:
+                error_msg += (
+                    f"You need to obtain an API key from the respective provider.\n\n"
+                )
             elif var_name == "SEED":
                 error_msg += "Example:\n"
                 error_msg += "   SEED=42\n\n"
-            
-            error_msg += "For more details, see the README.md or examples/README.md file.\n"
-            
+
+            error_msg += (
+                "For more details, see the README.md or examples/README.md file.\n"
+            )
+
             raise EnvironmentError(error_msg)
-        
+
         return default
-    
+
     return value
 
 
 def get_medeadb_path() -> str:
     """
     Get the MEDEADB_PATH environment variable with proper error handling.
-    
+
     Returns:
         str: The path to the MedeaDB directory.
-        
+
     Raises:
         EnvironmentError: If MEDEADB_PATH is not set.
     """
     return get_env_with_error(
         "MEDEADB_PATH",
         required=True,
-        description="accessing Medea database files (embeddings, datasets, models)"
+        description="accessing Medea database files (embeddings, datasets, models)",
     )
 
 
 def get_llm_provider(default: str = "OpenRouter") -> str:
     """
     Get the LLM_PROVIDER_NAME environment variable.
-    
+
     Controls which API provider is used for LLM calls.
-    Valid values: OpenRouter, Azure, OpenAI, Claude, Gemini
-    
+    Valid values: OpenRouter, Azure, OpenAI, Claude, Gemini, Ollama
+
     Args:
         default: Default provider if not set
-        
+
     Returns:
         str: The provider name
     """
@@ -102,28 +121,43 @@ def get_llm_provider(default: str = "OpenRouter") -> str:
         "LLM_PROVIDER_NAME",
         default=default,
         required=False,
-        description="selecting which LLM API provider to use"
+        description="selecting which LLM API provider to use",
     )
-    
+
     if provider not in VALID_LLM_PROVIDERS:
         print(
             f"Warning: Unknown LLM_PROVIDER_NAME '{provider}'. "
             f"Valid options: {', '.join(VALID_LLM_PROVIDERS)}. "
             f"Falling back to '{default}'.",
-            flush=True
+            flush=True,
         )
         return default
-    
+
     return provider
+
+
+def get_ollama_base_url() -> str:
+    """
+    Get the OLLAMA_BASE_URL environment variable.
+
+    Returns:
+        str: The Ollama base URL (default: http://localhost:11434)
+    """
+    return get_env_with_error(
+        "OLLAMA_BASE_URL",
+        default="http://localhost:11434",
+        required=False,
+        description="connecting to Ollama server",
+    )
 
 
 def get_backbone_llm(default: str = "gpt-4o") -> str:
     """
     Get the BACKBONE_LLM environment variable with proper error handling.
-    
+
     Args:
         default: Default LLM to use if not set
-        
+
     Returns:
         str: The LLM model name
     """
@@ -131,7 +165,7 @@ def get_backbone_llm(default: str = "gpt-4o") -> str:
         "BACKBONE_LLM",
         default=default,
         required=False,
-        description="specifying the main LLM model for agents"
+        description="specifying the main LLM model for agents",
     )
 
 
@@ -139,24 +173,24 @@ def get_utility_llm() -> str:
     """
     Get the UTILITY_LLM for lightweight tasks (quality checks, tool selection, code pre-checks).
     Falls back to BACKBONE_LLM if not set.
-    
+
     Set UTILITY_LLM in .env to use a lighter/faster model for utility tasks.
     """
     return get_env_with_error(
         "UTILITY_LLM",
         default=get_backbone_llm(),
         required=False,
-        description="lighter model for utility tasks (quality check, tool selection)"
+        description="lighter model for utility tasks (quality check, tool selection)",
     )
 
 
 def get_seed(default: int = 42) -> int:
     """
     Get the SEED environment variable with proper error handling.
-    
+
     Args:
         default: Default seed value if not set
-        
+
     Returns:
         int: The seed value
     """
@@ -164,9 +198,9 @@ def get_seed(default: int = 42) -> int:
         "SEED",
         default=str(default),
         required=False,
-        description="setting random seed for reproducibility"
+        description="setting random seed for reproducibility",
     )
-    
+
     try:
         return int(seed_str)
     except (ValueError, TypeError):
@@ -177,53 +211,53 @@ def get_seed(default: int = 42) -> int:
 def get_api_key(provider: str, required: bool = False) -> Optional[str]:
     """
     Get API key for a specific provider with helpful error messages.
-    
+
     Args:
         provider: Provider name (e.g., 'AZURE_OPENAI', 'OPENROUTER', 'GEMINI', 'ANTHROPIC')
         required: Whether this API key is required
-        
+
     Returns:
         Optional[str]: The API key if found
-        
+
     Raises:
         EnvironmentError: If required=True and API key is not set
     """
     var_name = f"{provider}_API_KEY"
     return get_env_with_error(
-        var_name,
-        required=required,
-        description=f"authenticating with {provider} API"
+        var_name, required=required, description=f"authenticating with {provider} API"
     )
 
 
 def validate_environment(required_vars: list = None) -> dict:
     """
     Validate that all required environment variables are set.
-    
+
     Args:
         required_vars: List of required variable names. If None, checks common ones.
-        
+
     Returns:
         dict: Dictionary of variable names to values
-        
+
     Raises:
         EnvironmentError: If any required variables are missing
     """
     if required_vars is None:
         required_vars = ["BACKBONE_LLM", "SEED"]
-    
+
     results = {}
     missing = []
-    
+
     for var in required_vars:
         value = os.getenv(var)
         if value is None:
             missing.append(var)
         else:
             results[var] = value
-    
+
     if missing:
-        error_msg = f"\n\n❌ Missing required environment variables: {', '.join(missing)}\n\n"
+        error_msg = (
+            f"\n\n❌ Missing required environment variables: {', '.join(missing)}\n\n"
+        )
         error_msg += "To fix this issue:\n"
         error_msg += "1. Create a .env file in your project root directory\n"
         error_msg += "2. Add the following lines to the .env file:\n"
@@ -232,9 +266,10 @@ def validate_environment(required_vars: list = None) -> dict:
         error_msg += "\n3. Or set them in your terminal:\n"
         for var in missing:
             error_msg += f"   export {var}=<your-value-here>\n"
-        error_msg += "\nFor more details, see the README.md or examples/README.md file.\n"
-        
-        raise EnvironmentError(error_msg)
-    
-    return results
+        error_msg += (
+            "\nFor more details, see the README.md or examples/README.md file.\n"
+        )
 
+        raise EnvironmentError(error_msg)
+
+    return results
