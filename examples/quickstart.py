@@ -141,7 +141,7 @@ def main():
         analysis_module=analysis_module,
         literature_module=literature_module,
         debate_rounds=2,
-        panelist_llms=['gemini-2.5-flash', 'llama3.1-8b', os.getenv("BACKBONE_LLM", "gpt-4o")],
+        panelist_llms=['llama3.1:8b', 'llama3.1:8b', os.getenv("BACKBONE_LLM", "gpt-4o")],
         include_backbone_llm=True,
         vote_merge=True,
         timeout=800

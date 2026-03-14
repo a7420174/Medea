@@ -6,3 +6,4 @@ results/
 MedeaDB/
 CLAUDE.md
 uv.lock
+.claude/

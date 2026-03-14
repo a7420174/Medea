@@ -16,6 +16,7 @@ from .langchain_agents import (
     TaskPackage,
     AgentAct,
     ActObsChainType,
+    act_match,
 )
 
 try:
@@ -914,7 +915,7 @@ class Analysis(BaseAgent):
         observation = None
 
         for action in self.actions:
-            if act_match(agent_act.name, action):
+            if action.action_name == agent_act.name:
                 act_found_flag = True
                 try:
                     observation = action(**agent_act.params)

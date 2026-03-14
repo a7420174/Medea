@@ -121,10 +121,12 @@ def literature_reasoning(query: str, literature_module) -> Any:
             if reasoning_response is not None and reasoning_response != "None":
                 break
         except Exception as e:
+            import traceback
             print(
-                f"Reasoning agent call failed (attempt {attempt + 1}/{max_agent_retries}): {e}",
+                f"Reasoning agent call failed (attempt {attempt + 1}/{max_agent_retries}): {type(e).__name__}: {e}",
                 flush=True,
             )
+            traceback.print_exc()
 
     return reasoning_response
 
@@ -138,6 +140,7 @@ def _experiment_wrapper(inputs_for_coding, coding_result):
     """Wrapper for experiment analysis module in multiprocessing context.
     Runs research planning and analysis in two phases so the research plan
     is saved even if analysis times out."""
+    import traceback
     from .modules.utils import Proposal
 
     query, research_planning_module, analysis_module = inputs_for_coding
@@ -158,9 +161,10 @@ def _experiment_wrapper(inputs_for_coding, coding_result):
                     break
             except Exception as e:
                 print(
-                    f"Research plan agent call failed (attempt {attempt + 1}/{max_retries}): {e}",
+                    f"Research plan agent call failed (attempt {attempt + 1}/{max_retries}): {type(e).__name__}: {e}",
                     flush=True,
                 )
+                traceback.print_exc()
 
         research_plan_text = "None"
         if isinstance(research_plan_response, dict) and isinstance(
@@ -184,14 +188,16 @@ def _experiment_wrapper(inputs_for_coding, coding_result):
                         break
                 except Exception as e:
                     print(
-                        f"Analysis agent call failed (attempt {attempt + 1}/{max_retries}): {e}",
+                        f"Analysis agent call failed (attempt {attempt + 1}/{max_retries}): {type(e).__name__}: {e}",
                         flush=True,
                     )
+                    traceback.print_exc()
 
         coding_result["data"] = (research_plan_text, analysis_response)
         coding_result["success"] = True
     except Exception as e:
-        print(f"[CODING_PROCESS] Error: {e}", flush=True)
+        print(f"[CODING_PROCESS] Error: {type(e).__name__}: {e}", flush=True)
+        traceback.print_exc()
         coding_result["error"] = str(e)
         coding_result["success"] = False
 
@@ -203,7 +209,9 @@ def _reasoning_wrapper(inputs_for_reasoning, reasoning_result):
         reasoning_result["data"] = result
         reasoning_result["success"] = True
     except Exception as e:
-        print(f"[REASONING_PROCESS] Error: {e}", flush=True)
+        import traceback
+        print(f"[REASONING_PROCESS] Error: {type(e).__name__}: {e}", flush=True)
+        traceback.print_exc()
         reasoning_result["error"] = str(e)
         reasoning_result["success"] = False
 

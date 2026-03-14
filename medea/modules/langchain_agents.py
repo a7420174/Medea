@@ -147,11 +147,24 @@ class BaseAgent:
         return self.llm.get_langchain_llm()
 
     def run(self, task: TaskPackage) -> Any:
-        """Run the agent on a task using LangChain's create_agent."""
+        """
+        Run the agent on a task using the agentlite-style execution loop.
+
+        Agents with __next_act__ use a react-style loop:
+          1. __next_act__ generates an action via LLM
+          2. forward() executes the action
+          3. Repeat until Finish action or max steps reached
+
+        Falls back to LangChain's create_agent for agents without __next_act__.
+        """
+        # Use agentlite-style loop if the agent has __next_act__
+        if hasattr(self, '__next_act__'):
+            return self._run_agentlite_loop(task)
+
+        # Fallback: LangChain create_agent
         from langchain.agents import create_agent
 
         task_input = task.get("input", str(task))
-
         system_prompt = self._create_prompt()
 
         agent = create_agent(
@@ -167,8 +180,44 @@ class BaseAgent:
             return messages[-1].content
         return str(result)
 
+    def _run_agentlite_loop(self, task: TaskPackage) -> Any:
+        """Execute the agentlite-style react loop: __next_act__ → forward → repeat."""
+        # Initialize inner actions (ThinkAct, FinishAct, etc.) — only once
+        if hasattr(self, '__add_inner_actions__') and not getattr(self, '_inner_actions_added', False):
+            self.__add_inner_actions__()
+            self._inner_actions_added = True
+
+        action_chain = ActObsChainType()
+        task.completion = "pending"
+
+        for step in range(self.max_exec_steps):
+            try:
+                agent_act = self.__next_act__(task, action_chain)
+            except Exception as e:
+                print(f"[{self.name}] __next_act__ failed at step {step}: {type(e).__name__}: {e}", flush=True)
+                break
+
+            try:
+                observation = self.forward(task, agent_act)
+            except Exception as e:
+                print(f"[{self.name}] forward() failed at step {step}: {type(e).__name__}: {e}", flush=True)
+                observation = f"Action execution error: {e}"
+
+            action_chain.add(agent_act, observation)
+
+            # Check if task is completed (set by forward when FinishAct is called)
+            if getattr(task, 'completion', None) == "completed":
+                return getattr(task, 'answer', observation)
+
+        # Max steps reached without completion
+        print(f"[{self.name}] Reached max execution steps ({self.max_exec_steps})", flush=True)
+        last_obs = action_chain.get_last_observation()
+        return last_obs if last_obs is not None else None
+
     def __call__(self, task_input: Any) -> Any:
         """Allow calling the agent directly like a function."""
+        if isinstance(task_input, TaskPackage):
+            return self.run(task_input)
         if isinstance(task_input, str):
             task_input = {"input": task_input}
         task = TaskPackage(data=task_input)

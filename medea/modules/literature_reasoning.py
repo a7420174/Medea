@@ -683,7 +683,7 @@ class LiteratureReasoning(BaseAgent):
 
         # Match action to available actions
         for action in self.actions:
-            if act_match(agent_act.name, action):
+            if action.action_name == agent_act.name:
                 act_found_flag = True
                 try:
                     observation = action(**agent_act.params)

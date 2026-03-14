@@ -16,6 +16,7 @@ from .langchain_agents import (
     ActObsChainType,
     AgentLogger,
     Proposal,
+    act_match,
 )
 
 try:
@@ -848,7 +849,7 @@ class ResearchPlanning(BaseAgent):
         observation = None
 
         for action in self.actions:
-            if act_match(agent_act.name, action):
+            if action.action_name == agent_act.name:
                 act_found_flag = True
                 try:
                     # Filter params to only include valid parameters for the action's __call__
