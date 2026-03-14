@@ -3,7 +3,6 @@ import os
 from sklearn.preprocessing import StandardScaler
 from .env_utils import get_medeadb_path as _get_medeadb_path
 
-sys.path.insert(0, os.path.join(_get_medeadb_path(), 'compass/COMPASS'))
 from compass.tokenizer import CANCER_CODE
 from compass import loadcompass
 import torch
