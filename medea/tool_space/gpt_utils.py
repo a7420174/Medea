@@ -388,8 +388,39 @@ def _nvidia_deepseek_completion(
         return f"I cannot help with it - NVIDIA DeepSeek initialization error: {str(e)[:100]}"
 
 
+def _inject_think_budget(messages: List[Dict[str, str]], budget: str) -> None:
+    """Inject thinking budget instruction into the system prompt for qwen3/qwen3.5 models.
+
+    Budget values:
+        - "off" or "none": Disable thinking entirely (/no_think)
+        - A positive integer (e.g., "1024"): Limit thinking to N tokens
+    """
+    if budget.lower() in ("off", "none", "0"):
+        instruction = "/no_think"
+    else:
+        try:
+            max_tokens = int(budget)
+            instruction = f"/think\nKeep your thinking concise, under {max_tokens} tokens."
+        except ValueError:
+            instruction = f"/think\n{budget}"
+
+    # Prepend to existing system message or insert new one
+    for msg in messages:
+        if msg["role"] == "system":
+            msg["content"] = f"{instruction}\n\n{msg['content']}"
+            return
+    messages.insert(0, {"role": "system", "content": instruction})
+
+
 def _ollama_completion(messages: List[Dict[str, str]], model: str, temperature: float = 0.4, seed: int = 42, attempts: int = 6) -> str:
     """Handle Ollama model completion with retry on 429 (too many concurrent requests)."""
+    debug_think = os.getenv("MEDEA_DEBUG_THINK", "").lower() in ("1", "true", "yes")
+    think_budget = os.getenv("OLLAMA_THINK_BUDGET", "").strip()
+
+    # Budget thinking: inject /think instruction into system prompt for qwen3/qwen3.5
+    if think_budget:
+        _inject_think_budget(messages, think_budget)
+
     for attempt in range(attempts):
         try:
             response: ChatResponse = OllamaChat(
@@ -400,6 +431,11 @@ def _ollama_completion(messages: List[Dict[str, str]], model: str, temperature: 
 
             # Handle reasoning/thinking models that use <think> tags (deepseek-r1, qwen3, etc.)
             if "</think>" in content:
+                think_block = content.split("</think>")[0]
+                if "<think>" in think_block:
+                    think_block = think_block.split("<think>", 1)[1]
+                if debug_think:
+                    print(f"[THINK] ({model}) {think_block[:500]}{'...' if len(think_block) > 500 else ''}", flush=True)
                 content = content.split("</think>")[-1].strip()
 
             return content
