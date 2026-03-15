@@ -311,13 +311,8 @@ setting_naming_dict = {
 # Experiment configurations: {setup_name: {user_template, agent_template, judge_prompt}}
 # Results saved to: results/PROMPT_SETTING/setting_naming_dict[SETTING]-context_dict[TASK]-SAMPLE_SEED.csv
 experiment_setup_dict = {
-    # Target Normination
-    "targetid_analysis_gpt4o": {
-        "user": target_id_query_temp,
-        "agent": target_id_instruction,
-        "judge_prompt": TARGETID_REASON_CHECK,
-    },
-    "targetid_analysis_claude": {
+    # Target Nomination
+    "targetid_analysis": {
         "user": target_id_query_temp,
         "agent": target_id_instruction,
         "judge_prompt": TARGETID_REASON_CHECK,
@@ -335,44 +330,29 @@ experiment_setup_dict = {
         "judge_prompt": TARGETID_REASON_CHECK,
     },
     # Synthetic Lethality Prediction (Cell Line)
-    "sl_analysis_gpt4o": {
-        "user": sl_query_lineage_openend,
-        "agent": sl_instruction_default,
-        "judge_prompt": SL_REASON_CHECK,
-    },
-    "sl_analysis_claude": {
+    "sl_analysis": {
         "user": sl_query_lineage_openend,
         "agent": sl_instruction_default,
         "judge_prompt": SL_REASON_CHECK,
     },
     # Synthetic Lethality Prediction (Yeast)
-    "sl_yeast_analysis_gpt5": {
-        "user": sl_query_yeast_openend,
-        "agent": None,
-        "judge_prompt": SL_REASON_CHECK,
-    },
-    "sl_yeast_analysis_claude": {
+    "sl_yeast_analysis": {
         "user": sl_query_yeast_openend,
         "agent": None,
         "judge_prompt": SL_REASON_CHECK,
     },
     # ICI Prediction
-    "immune_instruction_none_gpt4o": {
+    "immune_instruction_none": {
         "user": immune_query_default,
         "agent": immune_no_instruction,
         "judge_prompt": IMMUNE_ANS_CHECK,
     },
-    "immune_instruction_a_gpt4o": {
+    "immune_instruction_a": {
         "user": immune_query_temp_a,
         "agent": immune_instruction_a,
         "judge_prompt": IMMUNE_ANS_CHECK,
     },
-    "immune_instruction_b_gpt4o": {
-        "user": immune_query_temp_b,
-        "agent": immune_instruction_b,
-        "judge_prompt": IMMUNE_ANS_CHECK,
-    },
-    "immune_instruction_b_claude": {
+    "immune_instruction_b": {
         "user": immune_query_temp_b,
         "agent": immune_instruction_b,
         "judge_prompt": IMMUNE_ANS_CHECK,
@@ -436,16 +416,20 @@ else:
 # CONFIGURATION: PROMPT SELECTION
 # ============================================================================
 
-# Select prompt configuration based on task
+# Select prompt configuration based on task and SCFM
 if TASK == "targetID":
-    PROMPT_SETTING = "targetid_analysis_gpt4o"
+    _scfm_to_setting = {
+        "TranscriptFormer": "targetid_analysis_transcriptformer",
+        "PINNACLE": "targetid_analysis_pinnacle",
+    }
+    PROMPT_SETTING = _scfm_to_setting.get(SCFM, "targetid_analysis")
 elif TASK == "sl":
     if SL_SOURCE == "yeast":
-        PROMPT_SETTING = "sl_yeast_analysis_gpt5"
+        PROMPT_SETTING = "sl_yeast_analysis"
     else:
-        PROMPT_SETTING = "sl_analysis_gpt4o"
+        PROMPT_SETTING = "sl_analysis"
 else:
-    PROMPT_SETTING = "immune_instruction_b_gpt4o"
+    PROMPT_SETTING = "immune_instruction_b"
 
 # Load prompt templates from selected configuration
 USER_PROMPT = experiment_setup_dict[PROMPT_SETTING]["user"]
