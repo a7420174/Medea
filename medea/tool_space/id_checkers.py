@@ -136,8 +136,13 @@ def celltype_avaliability_checker(disease_name:str, cell_type:str, model_name:st
         embed_path = os.path.join(_get_medeadb_path(), 'pinnacle_embeds/ppi_embed_dict.pth')
         full_embedding_dict = torch.load(embed_path, weights_only=False)
         function_name = "load_pinnacle_ppi"
+    elif model_name == "transcriptformer":
+        # Delegate to TranscriptFormer's own context checker
+        return transcriptformer_context_checker(
+            user_query="", state="normal", cell_type=cell_type, disease=disease_name
+        )
     else:
-        return False, f"[celltype_avaliability_checker] Invalid model_name: {model_name}. Please use 'pinnacle'."
+        return False, f"[celltype_avaliability_checker] Invalid model_name: {model_name}. Supported: 'pinnacle', 'transcriptformer'."
     
     # Check if cell type exists (with normalization)
     formalized_cell_type = _normalize_celltype(cell_type)
@@ -196,13 +201,13 @@ def context_avalibility_checker(disease_name:str, cell_type:str, gene_list:list=
         print(msg, flush=True)
         return False, msg
     
-    # Only call celltype_avaliability_checker for pinnacle model
-    if model_name == "pinnacle":
+    # Call celltype_avaliability_checker for supported models
+    if model_name in ("pinnacle", "transcriptformer"):
         checker, msg = celltype_avaliability_checker(disease_name=disease_name, cell_type=cell_type, model_name=model_name)
         if not checker:
             return False, msg
     else:
-        msg = f"[context_avalibility_checker] Invalid model_name: {model_name}."
+        msg = f"[context_avalibility_checker] Invalid model_name: {model_name}. Supported: 'pinnacle', 'transcriptformer'."
         print(msg, flush=True)
         return False, msg
 
@@ -218,23 +223,28 @@ def context_avalibility_checker(disease_name:str, cell_type:str, gene_list:list=
         embed_path = os.path.join(_get_medeadb_path(), 'pinnacle_embeds/ppi_embed_dict.pth')
         full_embedding_dict = torch.load(embed_path, weights_only=False)
         function_name = "load_pinnacle_ppi"
-        
+
         # Find the actual cell type key (with normalization using same function as checker)
         formalized_cell_type = _normalize_celltype(cell_type)
         actual_cell_type_key = None
-        
+
         for cell_key in full_embedding_dict.keys():
             formalized_key = _normalize_celltype(cell_key)
             if formalized_key == formalized_cell_type:
                 actual_cell_type_key = cell_key
                 break
-                
+
         if actual_cell_type_key is None:
             return False, f"[context_avalibility_checker] Cell type '{cell_type}' not found in embeddings."
-            
+
         cell_type_embedding = full_embedding_dict[actual_cell_type_key]
+    elif model_name == "transcriptformer":
+        # TranscriptFormer gene validation already handled by celltype_avaliability_checker above
+        msg = f"[context_avalibility_checker] Cell type '{cell_type}' validated via TranscriptFormer. Gene-level validation deferred to runtime."
+        print(msg, flush=True)
+        return True, msg
     else:
-        return False, f"[context_avalibility_checker] Invalid model_name: {model_name}. Only 'pinnacle' is supported."
+        return False, f"[context_avalibility_checker] Invalid model_name: {model_name}. Supported: 'pinnacle', 'transcriptformer'."
 
     avaliability = [gene in cell_type_embedding for gene in gene_list]
     if all(avaliability):

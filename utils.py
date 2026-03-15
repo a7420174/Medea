@@ -54,10 +54,10 @@ def input_loader(
                 
                 # Extract experiment instruction from full_query
                 full_query = row.get('full_query', '')
-                if full_query and full_query != user_instruction:
-                    # Extract experiment_instruction by removing user_instruction from full_query
+                if full_query and full_query != user_instruction and scfm == 'PINNACLE':
+                    # Use pre-built full_query only when SCFM matches (PINNACLE)
                     experiment_instruction = full_query[len(user_instruction):].strip()
-                elif scfm != 'PINNACLE' and agent_template != None:
+                elif agent_template is not None:
                     # Generate experiment instruction
                     instruction = agent_template.format(
                         disease=d, 

@@ -788,17 +788,15 @@ Step 1: Retrieve Target Genes for RA in Luminal Epithelial Cells
     Return Type: list[str] | None
     Returns: A list of target protein names for RA treatment in luminal epithelial cells of the mammary gland.
 
-Step 2: Load PINNACLE PPI Embeddings
+Step 2: Load Cell-Type-Specific Gene Embeddings
     Action:
-        - Load the protein embeddings for the PINNACLE cell type-specific protein interaction networks (PPI) for luminal epithelial cells.
-    Tool: load_pinnacle_ppi
-    Description: This tool loads the protein embeddings for the PINNACLE cell type-specific PPI from the specified path.
-    Import path: from tool_space.searchDB import load_pinnacle_ppi
+        - Load the cell-type-specific gene embeddings from the configured single-cell foundation model (SCFM) for luminal epithelial cells.
+    Tool: load_pinnacle_ppi (for PINNACLE) or TranscriptformerEmbeddingTool (for TranscriptFormer)
+    Description: This tool loads cell-type-specific gene embeddings from the specified SCFM.
     Input Params:
         - cell_type: 'luminal_epithelial_cell_of_mammary_gland'
-        - ppi_embed_path: '../MedeaDB/pinnacle_embeds/ppi_embed_dict.pth'
-    Return Type: dict[str, dict[str, torch.Tensor]]
-    Returns: A dictionary with cell type as the key and a dictionary of activated gene names and their embeddings as values.
+    Return Type: dict[str, embedding]
+    Returns: A dictionary mapping gene names to their cell-type-specific embeddings.
 
 Step 3: Compute Cosine Similarity
     Action:
@@ -810,7 +808,7 @@ Step 3: Compute Cosine Similarity
         - numpy.linalg.norm: Compute the norm of an array.
         - numpy.argmax: Identify the index of the maximum value in an array.
     Action Details:
-        - Extract the embeddings of the candidate genes and the reference target genes from the loaded PPI embeddings.
+        - Extract the embeddings of the candidate genes and the reference target genes from the loaded embeddings.
         - For each candidate gene, compute the cosine similarity with each reference target gene.
         - Aggregate the cosine similarity scores and identify the candidate gene with the highest average similarity.
 
@@ -823,8 +821,7 @@ Step 4: Determine the Strongest Candidate Gene
 By following these steps, we can identify the strongest candidate gene for RA treatment in luminal epithelial cells of the mammary gland based on target specificity using cosine similarity and target reference embeddings.
 """
 
-CODING_SAMPLE = """import torch
-import numpy as np
+CODING_SAMPLE = """import numpy as np
 from tool_space.searchDB import load_disease_targets, load_pinnacle_ppi
 
 # Step 1: Retrieve Target Genes for RA in Luminal Epithelial Cells
@@ -835,9 +832,9 @@ target_genes = load_disease_targets(disease_name, celltype)
 if not target_genes:
     raise ValueError("No target genes found for the specified disease and cell type.")
 
-# Step 2: Load PINNACLE PPI Embeddings
-ppi_embed_path = '../MedeaDB/pinnacle_embeds/ppi_embed_dict.pth'
-ppi_embeddings = load_pinnacle_ppi(cell_type=celltype, embed_path=ppi_embed_path)
+# Step 2: Load Cell-Type-Specific Gene Embeddings
+# Use the appropriate SCFM tool (load_pinnacle_ppi or TranscriptformerEmbeddingTool)
+ppi_embeddings = load_pinnacle_ppi(cell_type=celltype)
 
 if celltype not in ppi_embeddings:
     raise ValueError("No embeddings found for the specified cell type.")

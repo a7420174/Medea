@@ -62,7 +62,7 @@ Feedback: Only one limitation discussed in the answer is efficiency. Question: W
 Feedback: The original answer can be improved by adding more logical structure e.g., grouping similar discussions together and add paragraph headers.\n
 """
 example_question_peft = "Discuss various parameter-efficient fine-tuning (PEFT) techniques for large language models, highlighting their strengths and weaknesses."
-example_passages_peft = """
+example_passages_peft = r"""
 [0] Title: Empirical Analysis of the Strengths and Weaknesses of PEFT Techniques for LLMs Text: As foundation models continue to exponentially scale in size, efficient methods of adaptation become increasingly critical. Parameter-efficient fine-tuning (PEFT), a recent class of techniques that require only modifying a small percentage of the model parameters, is currently the most popular method for adapting large language models (LLMs). Several PEFT techniques have recently been proposed with varying tradeoffs. We provide a comprehensive and uniform benchmark of various PEFT techniques across a representative LLM, the FLAN-T5 model, and evaluate model performance across different data scales of classification and generation datasets. Based on this, we provide a framework for choosing the optimal fine-tuning techniques given the task type and data availability. Contrary to popular belief, we also empirically prove that PEFT techniques converge slower than full tuning in low data scenarios, and posit the amount of data required for PEFT methods to both perform well and converge efficiently.\n
 [1] Title: Prefix-Tuning: Optimizing Continuous Prompts for Generation Text: In this paper, we propose prefix-tuning, a lightweight alternative to fine-tuning for natural language generation tasks, which keeps language model parameters frozen, but optimizes a small continuous task-specific vector (called the prefix). Prefix-tuning draws inspiration from prompting, allowing subsequent tokens to attend to this prefix as if it were "virtual tokens". We apply prefix-tuning to GPT-2 for table-to-text generation and to BART for summarization. We find that by learning only 0.1\% of the parameters, prefix-tuning obtains comparable performance in the full data setting, outperforms fine-tuning in low-data settings, and extrapolates better to examples with topics unseen during training.\n
 [2] Title: Parameter-Efficient Fine-Tuning for Pre-Trained Vision Models: A Survey Text: This paper aims to provide a comprehensive and systematic study of PEFT methods in the vision domain, particularly focusing on transformer-based pre-trained models ranging from the year 2019 to the year 2023. As shown in Fig. 1, existing visual PEFT methods could be categorized into addition-based tuning, partial-based tuning, and unified-based tuning. In section 2, we will define the problem of PEFT, introduce popular backbones, and discuss pre-training methods. In section 3, a detailed taxonomy and in-depth analysis of the PEFT methods will be presented. The real-world applications of PEFT will be introduced in section 4. Finally, in section 5, we will point out future research challenges.\n
@@ -128,7 +128,7 @@ Evaluate the relevance of passages from scientific papers to aid in crafting inf
 # TODO: add demonstrations
 example_question_summarization = "We present QuAC, a dataset for Question Answering in Context that contains 14K information-seeking QA dialogs (100K questions in total). The dialogs involve two crowd workers: (1) a student who poses a sequence of freeform questions to learn as much as possible about a hidden Wikipedia text, and (2) a teacher who answers the questions by providing short excerpts from the text. QuAC introduces challenges not found in existing machine comprehension datasets: its questions are often more open-ended, unanswerable, or only meaningful within the dialog context, as we show in a detailed qualitative evaluation. We also report results for a number of reference models, including a recently state-of-the-art reading comprehension architecture extended to model dialog context. Our best model underperforms humans by 20 F1, suggesting that there is significant room for future work on this data. "
 
-example_passages_summarization = """
+example_passages_summarization = r"""
 [0] Title: CoQA: A Conversational Question Answering Challenge Text: Humans gather information by engaging in conversations involving a series of interconnected questions and answers. For machines to assist in information gathering, it is therefore essential to enable them to answer conversational questions. We introduce CoQA, a novel dataset for building Conversational Question Answering systems. Our dataset contains 127k questions with answers, obtained from 8k conversations about text passages from seven diverse domains. The questions are conversational, and the answers are free-form text with their corresponding evidence highlighted in the passage. We analyze CoQA in depth and show that conversational questions have challenging phenomena not present in existing reading comprehension datasets, e.g., coreference and pragmatic reasoning. We evaluate strong conversational and reading comprehension models on CoQA. The best system obtains an F1 score of 65.4\%, which is 23.4 points behind human performance (88.8\%), indicating there is ample room for improvement. \n
 [1] Title: SQuAD: 100,000+ Questions for Machine Comprehension of Text Text: We present the Stanford Question Answering Dataset (SQuAD), a new reading comprehension dataset consisting of 100,000+ questions posed by crowdworkers on a set of Wikipedia articles, where the answer to each question is a segment of text from the corresponding reading passage. We analyze the dataset to understand the types of reasoning required to answer the questions, leaning heavily on dependency and constituency trees. We build a strong logistic regression model, which achieves an F1 score of 51.0\%, a significant improvement over a simple baseline (20\%). However, human performance (86.8\%) is much higher, indicating that the dataset presents a good challenge problem for future research.\n
 [2] Title: Interpretation of natural language rules in conversational machine reading Text: Most work in machine reading focuses on question answering problems where the answer is directly expressed in the text to read. However, many real-world question answering problems require the reading of text not because it contains the literal answer, but because it contains a recipe to derive an answer together with the reader's background knowledge. One example is the task of interpreting regulations to answer "Can I...?" or "Do I have to...?" questions such as "I am working in Canada. Do I have to carry on paying UK National Insurance?" after reading a UK government website about this topic. This task requires both the interpretation of rules and the application of background knowledge. It is further complicated due to the fact that, in practice, most questions are underspecified, and a human assistant will regularly have to ask clarification questions such as How long have you been working abroad? when the answer cannot be directly derived from the question and text. In this paper, we formalise this task and develop a crowd-sourcing strategy to collect 32k task instances based on real-world rules and crowd-generated questions and scenarios. We analyse the challenges of this task and assess its difficulty by evaluating the performance of rule-based and machine-learning baselines. We observe promising results when no background knowledge is necessary, and substantial room for improvement whenever background knowledge is needed.\n
@@ -152,7 +152,7 @@ Also concurrently, [0] propose conversational question answering (CoQA) from tex
 
 
 # TODO: add examples
-example_passages_single_paper = """
+example_passages_single_paper = r"""
 [0] We hypothesize that factual knowledge frequently discussed on the web is easily memorized by LMs, while the knowledge that is less discussed may not be well captured and thus they require retrieving external non-parametric memories. We evaluate ten large LMs of three families (i.e., GPT-Neo, OPT, and GPT-3) with varying scales on the open-domain question answering (QA) task in a zero- or few-shot prompting manner. 
 [1] We construct a new dataset, PopQA, consisting of 14k questions to cover factual information in the long tail that might have been missed in popular QA datasets Kwiatkowski et al. (2019). We use Wikipedia page views as a measure of popularity and convert knowledge triples from Wikidata, with diverse levels of popularity, into natural language questions, anchored to the original entities and relationship types. We also use EntityQuestions Sciavolino et al. (2021), an open-domain QA dataset with a long-tail distribution.
 [2] Figure 4 (bottom) shows that there is a positive correlation between subject entity popularity and models' accuracy for almost all relationship types. This supports our hypothesis that subject entity popularity can be a reliable indicator of LMs' factual knowledge memorization. In general, the correlations between subject entity popularity and accuracy are stronger for larger LMs; GPT-3 003 shows the highest positive correlation (roughly 0.4) while GPT-Neo-1.3B shows relatively weak positive correlations (approximately 0.1).
@@ -191,7 +191,7 @@ instruction_feedback_prompt = instruction_feedback.format_map({"example_question
 feedback_example_instance_prompt = instruction_feedback_prompt +  "Question: {question}\nAnswer:\n{answer}\n"
 
 
-editing_feedback = """
+editing_feedback = r"""
 We provide a question related to recent scientific literature, an answer from a strong language model, and feedback on the answer.
 Please incorporate the feedback to improve the answer. Only modify the parts that require enhancement as noted in the feedback, keeping the other sentences unchanged.
 Do not omit any crucial information from the original answer unless the feedback specifies that certain sentences are incorrect and should be removed.
@@ -215,7 +215,7 @@ Edited Answer:
 editing_instance_prompt = \
     editing_feedback +  "##\nReferences\n{passages}\nQuestion: {question}\nAnswer:\n{answer}\nFeedback:\n{feedback}\nEdited Answer:\n"
 
-posthoc_attributions = """
+posthoc_attributions = r"""
 We give you a statement extracted from an answer to a question related to the most recent scientific literature, and a set of evidence passages.
 If the statement is fully supported by any of the listed passages in References, insert the citation numbers to the statement.
 If none of the passages support the statement, do not insert any citation, and leave the original sentence as is.
@@ -236,7 +236,7 @@ Statement: {statement}
 References:\n{passages}\n
 """
 
-posthoc_attributions_paragraph_all = """
+posthoc_attributions_paragraph_all = r"""
 We give you a short paragraph extracted from an answer to a question related to the most recent scientific literature, and a set of evidence passages.
 Find all of the citation-worthy statements without any citations, and insert citation numbers to the statements that are fully supported by any of the provided citations in listed as References. 
 If none of the passages support the statement, do not insert any citation, and leave the original sentence as is, but do your best to insert citation. 
@@ -257,7 +257,7 @@ Statement: {statement}
 References:\n{passages}\n
 """
 
-posthoc_attributions_paragraph = """
+posthoc_attributions_paragraph = r"""
 We give you a short paragraph extracted from an answer to a question related to the most recent scientific literature, and a set of evidence passages.
 Find all of the citation-worthy statements without any citations, and insert citation numbers to the statements that are fully supported by any of the provided citations in listed as References. 
 If none of the passages support the statement, do not insert any citation number, and leave the original sentence as is. 
