@@ -106,3 +106,17 @@ NVIDIA_DEEPSEEK_API_KEY=your-nvidia-deepseek-api-key-here
 # OPTIONAL: Hugging Face Cache
 # ============================================================================
 # HF_HOME=~/.cache/huggingface
+
+# ============================================================================
+# OPTIONAL: TranscriptFormer Auto-Generation
+# Required only when using TranscriptformerEmbeddingTool(auto_generate=True)
+# Also requires: pip install cellxgene-census
+# ============================================================================
+# Path to TranscriptFormer model checkpoint directory
+# TF_CHECKPOINT_PATH=/path/to/transcriptformer/checkpoints/tf_sapiens
+
+# Root directory containing {disease}/fixed.h5ad (or raw .h5ad) files
+# Structure: DISEASE_ATLAS_PATH/{disease_name}/fixed.h5ad
+# If not set, defaults to $MEDEADB_PATH/disease_atlas/ and auto-downloads from CellxGene Census
+# Note: TranscriptFormer embeddings are stored in $MEDEADB_PATH/transcriptformer_embedding/{disease}/
+# DISEASE_ATLAS_PATH=/path/to/Disease-atlas

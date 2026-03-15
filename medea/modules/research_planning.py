@@ -17,6 +17,8 @@ from .langchain_agents import (
     AgentLogger,
     Proposal,
     act_match,
+    ThinkAct,
+    PlanAct,
 )
 
 try:
@@ -826,7 +828,7 @@ class ResearchPlanning(BaseAgent):
             for _, p_obs in reversed(action_chain):
                 if (
                     isinstance(p_obs, Proposal)
-                    and p_obs.get_id() == args["proposal_draft"]
+                    and repr(p_obs) == args["proposal_draft"]
                 ):
                     args["proposal_draft"] = p_obs
                     break

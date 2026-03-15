@@ -37,6 +37,7 @@ Medea consists of three specialized agentic modules that collaborate with each o
 - [Configuration](#configuration)
 - [Using Medea as a Library](#using-medea-as-a-library)
 - [Command-Line Interface (CLI) Usage](#command-line-interface-cli-usage)
+- [Adding New Diseases (TranscriptFormer)](#adding-new-diseases-transcriptformer)
 - [Documentation](#documentation)
 
 
@@ -76,6 +77,63 @@ git clone https://github.com/mims-harvard/COMPASS.git MedeaDB/compass/COMPASS
 ```
 
 **📚 Detailed guide**: See [docs/QUICKSTART.md](docs/QUICKSTART.md)
+
+### Adding New Diseases (TranscriptFormer)
+
+MedeaDB ships with pre-built TranscriptFormer embeddings for 5 diseases (`rheumatoid_arthritis`, `sjogren_syndrome`, `follicular_lymphoma`, `hepatoblastoma`, `type_1_diabetes_mellitus`). To add a new disease, run the pipeline below or use the automatic generation feature.
+
+#### Option A: Automatic (Python)
+
+```python
+import os
+os.environ["TF_CHECKPOINT_PATH"] = "/path/to/transcriptformer/checkpoints/tf_sapiens"
+os.environ["DISEASE_ATLAS_PATH"] = "/path/to/Disease-atlas"  # must contain {disease}/fixed.h5ad
+
+from medea.tool_space.transcriptformer import TranscriptformerEmbeddingTool
+
+tool = TranscriptformerEmbeddingTool(auto_generate=True)
+# If "systemic_lupus_erythematosus" is missing, runs the full pipeline automatically
+embeddings, ctx = tool.get_embedding_for_context(
+    state="disease", cell_type="b_cell", gene_names=["CD79A"],
+    disease="systemic lupus erythematosus"
+)
+```
+
+#### Option B: Manual (CLI)
+
+**Step 1.** Download [TranscriptFormer](https://github.com/czi-ai/transcriptformer) and obtain a disease `.h5ad` from [CellxGene](https://cellxgene.cziscience.com/).
+
+**Step 2.** Organise the Disease-atlas folder:
+```
+Disease-atlas/
+└── {disease}/
+    └── {cellxgene_dataset_id}.h5ad
+```
+
+**Step 3.** Preprocess:
+```bash
+python -m medea.tool_space.tf_preprocess \
+    Disease-atlas/{disease}/{raw}.h5ad \
+    Disease-atlas/{disease}/fixed.h5ad
+```
+
+**Step 4.** Run TranscriptFormer inference:
+```bash
+python -m medea.tool_space.tf_inference \
+    Disease-atlas/{disease}/fixed.h5ad \
+    {disease}_cge.h5ad \
+    /path/to/transcriptformer/checkpoints/tf_sapiens
+```
+
+**Step 5.** Build embedding store:
+```bash
+python -m medea.tool_space.tf_embedding_store \
+    {disease}_cge.h5ad \
+    "{disease name}" \
+    --store-dir $MEDEADB_PATH/transcriptformer_embedding/embedding_store
+```
+
+The new disease will be available immediately in `TranscriptformerEmbeddingTool`.
 
 ## Configuration
 

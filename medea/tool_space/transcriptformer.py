@@ -5,12 +5,17 @@ High-performance tool to load cell-type and disease-state specific gene embeddin
 This script provides a class-based tool that queries a pre-generated,
 high-performance embedding store. It supports both Ensembl IDs and official
 gene symbols and features near-instant initialization and on-demand data loading.
+
+Auto-generation (requires env vars):
+    TF_CHECKPOINT_PATH  : Path to TranscriptFormer checkpoint directory
+    DISEASE_ATLAS_PATH  : Directory containing {disease}/fixed.h5ad (or raw .h5ad)
 """
 
 import os
 import sys
 import json
 import gzip
+import tempfile
 import numpy as np
 from typing import Union
 
@@ -23,11 +28,17 @@ from .gpt_utils import chat_completion
 from .env_utils import get_env_with_error
 from thefuzz import process
 
+
 class TranscriptformerEmbeddingTool:
     """
     A tool for fast, on-demand querying of gene embeddings from a prepared store.
+
+    Args:
+        auto_generate (bool): If True, automatically run the full embedding-generation
+            pipeline when a requested disease is not found in the store.
+            Requires TF_CHECKPOINT_PATH and DISEASE_ATLAS_PATH to be set.
     """
-    def __init__(self):
+    def __init__(self, auto_generate: bool = False):
         """
         Initializes the tool by identifying available disease-specific embedding stores.
         """
@@ -37,7 +48,7 @@ class TranscriptformerEmbeddingTool:
             required=False,
             description="accessing Transcriptformer embeddings"
         )
-        self.base_dir = os.path.join(medeadb_path, "transcriptformer_embedding", "embedding_store")
+        self.base_dir = os.path.join(medeadb_path, "transcriptformer_embedding")
         if not os.path.exists(self.base_dir):
             error_msg = (
                 f"\n\n❌ Transcriptformer embedding store not found!\n\n"
@@ -49,18 +60,120 @@ class TranscriptformerEmbeddingTool:
                 f"Current MEDEADB_PATH: {medeadb_path}\n"
             )
             raise FileNotFoundError(error_msg)
-        self.available_diseases = [d.lower().replace(" ", "_") for d in os.listdir(self.base_dir) if os.path.isdir(os.path.join(self.base_dir, d))]
+
+        self.auto_generate = auto_generate
+        self._refresh_available_diseases()
         self.metadata_cache = {}
+
+    # ------------------------------------------------------------------
+    # Internal helpers
+    # ------------------------------------------------------------------
+
+    def _refresh_available_diseases(self):
+        self.available_diseases = [
+            d.lower().replace(" ", "_")
+            for d in os.listdir(self.base_dir)
+            if os.path.isdir(os.path.join(self.base_dir, d))
+        ]
+
+    def _find_raw_h5ad(self, disease_key: str) -> str | None:
+        """Return fixed.h5ad (preferred) or any .h5ad under DISEASE_ATLAS_PATH/{disease_key}/."""
+        atlas_root = os.environ.get("DISEASE_ATLAS_PATH", "")
+        if not atlas_root:
+            return None
+        disease_dir = os.path.join(atlas_root, disease_key)
+        if not os.path.isdir(disease_dir):
+            return None
+        fixed = os.path.join(disease_dir, "fixed.h5ad")
+        if os.path.exists(fixed):
+            return fixed
+        for fname in os.listdir(disease_dir):
+            if fname.endswith(".h5ad"):
+                return os.path.join(disease_dir, fname)
+        return None
+
+    def _auto_generate_store(self, disease_key: str, disease_name: str):
+        """
+        Run the full pipeline to generate an embedding store for a new disease:
+          1. preprocess_adata  (skipped if fixed.h5ad already exists)
+          2. celltype_disease_cge_inference
+          3. prepare_embedding_store
+        """
+        from .tf_preprocess import preprocess_adata
+        from .tf_inference import celltype_disease_cge_inference
+        from .tf_embedding_store import prepare_embedding_store
+
+        print(f"\nAuto-generating embedding store for: {disease_name}")
+        print("=" * 60)
+
+        checkpoint_path = os.environ.get("TF_CHECKPOINT_PATH", "")
+        if not checkpoint_path:
+            raise EnvironmentError(
+                "TF_CHECKPOINT_PATH is not set. "
+                "Set it to the TranscriptFormer checkpoint directory."
+            )
+        if not os.path.isdir(checkpoint_path):
+            raise FileNotFoundError(f"TF_CHECKPOINT_PATH not found: {checkpoint_path}")
+
+        raw_path = self._find_raw_h5ad(disease_key)
+        if raw_path is None:
+            atlas_root = os.environ.get(
+                "DISEASE_ATLAS_PATH",
+                os.path.join(os.environ.get("MEDEADB_PATH", "."), "disease_atlas"),
+            )
+            print(f"No local .h5ad found — downloading from CellxGene Census...")
+            from .tf_cellxgene import download_disease_h5ad
+            raw_path = download_disease_h5ad(disease_name, atlas_root)
+
+        with tempfile.TemporaryDirectory(prefix=f"medea_tf_{disease_key}_") as tmpdir:
+            # Step 1: preprocess
+            if os.path.basename(raw_path) == "fixed.h5ad":
+                fixed_path = raw_path
+                print(f"Step 1: Using existing fixed.h5ad")
+            else:
+                fixed_path = os.path.join(tmpdir, "fixed.h5ad")
+                print(f"Step 1: Preprocessing {os.path.basename(raw_path)}...")
+                ok = preprocess_adata(raw_path, fixed_path)
+                if not ok:
+                    raise RuntimeError(f"Preprocessing failed for {raw_path}")
+
+            # Step 2: inference
+            cge_output = os.path.join(tmpdir, f"{disease_key}_cge.h5ad")
+            print(f"Step 2: Running TranscriptFormer inference...")
+            celltype_disease_cge_inference(fixed_path, cge_output, checkpoint_path)
+
+            # Step 3: build store
+            print(f"Step 3: Building embedding store...")
+            prepare_embedding_store(cge_output, disease_name, self.base_dir)
+
+        self._refresh_available_diseases()
+        print(f"\nEmbedding store ready for: {disease_name}")
 
     def _load_metadata(self, disease: str):
         """
         Loads metadata for a given disease and caches it.
+        If auto_generate=True and the disease is unknown, runs the full pipeline first.
         """
         if disease in self.metadata_cache:
             return self.metadata_cache[disease]
 
         if disease not in self.available_diseases:
-            raise FileNotFoundError(f"Disease '{disease}' is not available/invalid. Please choose from the following avaliable diseases: {self.available_diseases}")
+            if self.auto_generate:
+                # Convert key back to human-readable name (underscores → spaces)
+                disease_name = disease.replace("_", " ")
+                self._auto_generate_store(disease_key=disease, disease_name=disease_name)
+                # Re-check after generation
+                if disease not in self.available_diseases:
+                    raise RuntimeError(
+                        f"Auto-generation completed but '{disease}' still not found in store. "
+                        f"Check the pipeline output for errors."
+                    )
+            else:
+                raise FileNotFoundError(
+                    f"Disease '{disease}' is not available/invalid. "
+                    f"Available diseases: {self.available_diseases}\n"
+                    f"To auto-generate, initialize with: TranscriptformerEmbeddingTool(auto_generate=True)"
+                )
 
         store_path = os.path.join(self.base_dir, disease.replace(" ", "_"))
         metadata_path = os.path.join(store_path, "metadata.json.gz")

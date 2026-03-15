@@ -7,3 +7,4 @@ MedeaDB/
 CLAUDE.md
 uv.lock
 .claude/
+.venv/

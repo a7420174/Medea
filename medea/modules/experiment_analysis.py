@@ -17,6 +17,8 @@ from .langchain_agents import (
     AgentAct,
     ActObsChainType,
     act_match,
+    ThinkAct,
+    PlanAct,
 )
 
 try:
@@ -885,7 +887,7 @@ class Analysis(BaseAgent):
 
         # Try to find from action chain with ID matching
         for _, p_obs in reversed(action_chain):
-            if isinstance(p_obs, Proposal) and p_obs.get_id() == instruction_ref:
+            if isinstance(p_obs, Proposal) and repr(p_obs) == instruction_ref:
                 return p_obs
 
         # Use stored context proposal

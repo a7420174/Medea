@@ -370,6 +370,63 @@ class Proposal:
 ACTION_NOT_FOUND_MESS = "[Error] Action not found in action list."
 
 
+# ---------------------------------------------------------------------------
+# Built-in inner actions (equivalents of AgentLite's ThinkAct / PlanAct)
+# These are added automatically by __add_inner_actions__ in each agent module.
+# ---------------------------------------------------------------------------
+
+class _ThinkAction(BaseAction):
+    """Let the agent emit an intermediate thought without calling an external tool."""
+
+    def __init__(self):
+        super().__init__(
+            action_name="Think",
+            action_desc=(
+                "Use this action to reason step-by-step before choosing the next tool. "
+                "The thought is recorded but produces no external side-effect."
+            ),
+            params_doc={"thought": "Your reasoning or intermediate analysis (string)."},
+        )
+
+    def __call__(self, thought: str = "", **kwargs) -> str:
+        return thought
+
+    def __hash__(self):
+        return hash(self.action_name)
+
+    def __eq__(self, other):
+        return isinstance(other, _ThinkAction)
+
+
+class _PlanAction(BaseAction):
+    """Let the agent emit a high-level plan before executing individual steps."""
+
+    def __init__(self):
+        super().__init__(
+            action_name="Plan",
+            action_desc=(
+                "Use this action to outline a multi-step plan before starting execution. "
+                "The plan is recorded but produces no external side-effect."
+            ),
+            params_doc={"plan": "Your step-by-step plan (string)."},
+        )
+
+    def __call__(self, plan: str = "", **kwargs) -> str:
+        return plan
+
+    def __hash__(self):
+        return hash(self.action_name)
+
+    def __eq__(self, other):
+        return isinstance(other, _PlanAction)
+
+
+# Module-level singletons — imported by research_planning, experiment_analysis,
+# and literature_reasoning as `ThinkAct` and `PlanAct`.
+ThinkAct = _ThinkAction()
+PlanAct = _PlanAction()
+
+
 def create_agent_executor(
     llm, tools: List[BaseTool], system_message: str, max_iterations: int = 60
 ):

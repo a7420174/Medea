@@ -354,9 +354,9 @@ def _validate_special_arguments(arguments: Dict) -> bool:
     Ensures object references are EXACT format with no additional text.
     """
     validators = {
-        "proposal_draft": r"^<Proposal:\d{4}>$",
-        "code_snippet": r"^<CodeSnippet:\d{4}>$",
-        "instruction": r"^<Proposal:\d{4}>$",
+        "proposal_draft": r"^<Proposal:\d+>$",
+        "code_snippet": r"^<CodeSnippet:\d+>$",
+        "instruction": r"^<Proposal:\d+>$",
     }
 
     for arg_name, pattern in validators.items():

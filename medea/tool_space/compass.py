@@ -34,7 +34,7 @@ def compass_predict(
     ):
     # Set default root_path if not provided
     if root_path is None:
-        root_path = os.path.join(_get_medeadb_path(), "compass/checkpoint")
+        root_path = os.path.join(_get_medeadb_path(), "compass")
     
     responder = False
     tpm_path = os.path.join(root_path, ckp_path)

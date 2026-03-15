@@ -388,24 +388,39 @@ def _nvidia_deepseek_completion(
         return f"I cannot help with it - NVIDIA DeepSeek initialization error: {str(e)[:100]}"
 
 
-def _ollama_completion(messages: List[Dict[str, str]], model: str, temperature: float = 0.4, seed: int = 42) -> str:
-    """Handle Ollama model completion."""
-    try:
-        response: ChatResponse = OllamaChat(
-            model=model, messages=messages, options={"seed": seed, "temperature": temperature}
-        )
+def _ollama_completion(messages: List[Dict[str, str]], model: str, temperature: float = 0.4, seed: int = 42, attempts: int = 6) -> str:
+    """Handle Ollama model completion with retry on 429 (too many concurrent requests)."""
+    for attempt in range(attempts):
+        try:
+            response: ChatResponse = OllamaChat(
+                model=model, messages=messages, options={"seed": seed, "temperature": temperature}
+            )
 
-        content = response.message.content
+            content = response.message.content
 
-        # Handle reasoning/thinking models that use <think> tags (deepseek-r1, qwen3, etc.)
-        if "</think>" in content:
-            content = content.split("</think>")[-1].strip()
+            # Handle reasoning/thinking models that use <think> tags (deepseek-r1, qwen3, etc.)
+            if "</think>" in content:
+                content = content.split("</think>")[-1].strip()
 
-        return content
+            return content
 
-    except Exception as e:
-        print(f"[chat_completion] Ollama error (model={model}): {e}", flush=True)
-        return f"I cannot help with it - Ollama error (model={model})"
+        except Exception as e:
+            err_str = str(e)
+            is_rate_limit = "429" in err_str or "too many concurrent requests" in err_str.lower()
+
+            if is_rate_limit and attempt < attempts - 1:
+                wait_time = (2 ** attempt) + 2
+                print(
+                    f"[chat_completion] Ollama 429 (model={model}), attempt {attempt + 1}/{attempts}. "
+                    f"Retrying in {wait_time}s...",
+                    flush=True,
+                )
+                time.sleep(wait_time)
+            else:
+                print(f"[chat_completion] Ollama error (model={model}): {e}", flush=True)
+                return f"I cannot help with it - Ollama error (model={model})"
+
+    return f"I cannot help with it - Ollama error (model={model}): all {attempts} attempts failed"
 
 
 def _gemini_completion(

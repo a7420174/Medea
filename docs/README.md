@@ -6,6 +6,7 @@ Essential documentation for Memdea.
 
 - **[QUICKSTART.md](QUICKSTART.md)** - Get started in 2 minutes
 - **[PACKAGE_STRUCTURE.md](PACKAGE_STRUCTURE.md)** - Package architecture (for developers)
+- **[Adding New Diseases](../README.md#adding-new-diseases-transcriptformer)** - Generate TranscriptFormer embeddings for new diseases
 
 ## 🔗 Quick Links
 
