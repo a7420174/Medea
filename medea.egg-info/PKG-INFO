@@ -20,13 +20,14 @@ Classifier: Programming Language :: Python :: 3.12
 Requires-Python: >=3.9
 Description-Content-Type: text/markdown
 License-File: LICENSE
-Requires-Dist: langchain>=0.1.0
-Requires-Dist: langchain-core>=0.1.0
-Requires-Dist: langchain-openai>=0.0.5
-Requires-Dist: langchain-anthropic>=0.1.0
-Requires-Dist: langchain-google-genai>=0.0.5
-Requires-Dist: langchain-community>=0.0.20
-Requires-Dist: langchain-text-splitters>=0.0.0
+Requires-Dist: langchain<0.4,>=0.3.0
+Requires-Dist: langchain-core<0.4,>=0.3.0
+Requires-Dist: langchain-openai<0.4,>=0.3.0
+Requires-Dist: langchain-anthropic<0.4,>=0.3.0
+Requires-Dist: langchain-google-genai<3,>=2.0.0
+Requires-Dist: langchain-community<0.4,>=0.3.0
+Requires-Dist: langchain-ollama<0.4,>=0.3.0
+Requires-Dist: langchain-text-splitters<0.4,>=0.3.0
 Requires-Dist: pandas>=2.2.0
 Requires-Dist: numpy>=1.24.0
 Requires-Dist: openai>=1.10
@@ -112,7 +113,7 @@ Requires-Dist: certifi>=2023.0.0
 Requires-Dist: immuno-compass>=2.3
 Requires-Dist: transcriptformer>=0.6.1
 Provides-Extra: tools
-Requires-Dist: tooluniverse>=1.0.0; extra == "tools"
+Requires-Dist: tooluniverse>=1.1.4; extra == "tools"
 Provides-Extra: transcriptformer
 Requires-Dist: cellxgene-census>=1.12.0; extra == "transcriptformer"
 Requires-Dist: anndata>=0.10.0; extra == "transcriptformer"

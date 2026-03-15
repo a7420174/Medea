@@ -83,13 +83,23 @@ class ProposalToolSelector:
         )
 
     def _extract_code_block(self, response: str) -> str:
-        """Extract code from JSON or Python code blocks."""
+        """Extract code from JSON or Python code blocks, stripping thinking tags."""
+        # Strip <think>...</think> blocks from reasoning models
+        if "</think>" in response:
+            response = response.split("</think>")[-1].strip()
+
         if "```json" in response:
             matches = re.findall(JSON_CODE_BLOCK_PATTERN, response, re.DOTALL)
             return matches[0] if matches else response
         if "```python" in response:
             matches = re.search(PYTHON_CODE_BLOCK_PATTERN, response, re.DOTALL)
             return matches.group(1).strip() if matches else response.strip()
+
+        # Try to extract a bare list (e.g., ["tool1", "tool2"])
+        list_match = re.search(r'\[.*\]', response, re.DOTALL)
+        if list_match:
+            return list_match.group(0)
+
         return response
 
     def __call__(self, user_query: str, max_attempts: int = 3) -> List[Dict]:

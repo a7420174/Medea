@@ -127,7 +127,7 @@ dependencies = [
 
 [project.optional-dependencies]
 tools = [
-    "tooluniverse>=1.0.0",
+    "tooluniverse>=1.1.4",
 ]
 transcriptformer = [
     "cellxgene-census>=1.12.0",

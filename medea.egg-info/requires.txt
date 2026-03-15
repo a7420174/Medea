@@ -1,10 +1,11 @@
-langchain>=0.1.0
-langchain-core>=0.1.0
-langchain-openai>=0.0.5
-langchain-anthropic>=0.1.0
-langchain-google-genai>=0.0.5
-langchain-community>=0.0.20
-langchain-text-splitters>=0.0.0
+langchain<0.4,>=0.3.0
+langchain-core<0.4,>=0.3.0
+langchain-openai<0.4,>=0.3.0
+langchain-anthropic<0.4,>=0.3.0
+langchain-google-genai<3,>=2.0.0
+langchain-community<0.4,>=0.3.0
+langchain-ollama<0.4,>=0.3.0
+langchain-text-splitters<0.4,>=0.3.0
 pandas>=2.2.0
 numpy>=1.24.0
 openai>=1.10
@@ -103,7 +104,7 @@ ipykernel>=6.0.0
 notebook>=7.0.0
 
 [tools]
-tooluniverse>=1.0.0
+tooluniverse>=1.1.4
 
 [transcriptformer]
 cellxgene-census>=1.12.0
