@@ -108,10 +108,22 @@ class TranscriptformerEmbeddingTool:
 
         checkpoint_path = os.environ.get("TF_CHECKPOINT_PATH", "")
         if not checkpoint_path:
-            raise EnvironmentError(
-                "TF_CHECKPOINT_PATH is not set. "
-                "Set it to the TranscriptFormer checkpoint directory."
-            )
+            medeadb_path = os.environ.get("MEDEADB_PATH", "")
+            if medeadb_path:
+                candidate = os.path.join(medeadb_path, "transcriptformer_checkpoints")
+                if os.path.isdir(candidate):
+                    checkpoint_path = candidate
+                    print(f"[TranscriptFormer] Using checkpoint: {checkpoint_path}")
+                else:
+                    raise FileNotFoundError(
+                        f"TF_CHECKPOINT_PATH is not set and default path not found: {candidate}\n"
+                        "Run: uv run transcriptformer download tf-sapiens --checkpoint-dir "
+                        f"{candidate}"
+                    )
+            else:
+                raise EnvironmentError(
+                    "TF_CHECKPOINT_PATH is not set and MEDEADB_PATH is also not set."
+                )
         if not os.path.isdir(checkpoint_path):
             raise FileNotFoundError(f"TF_CHECKPOINT_PATH not found: {checkpoint_path}")
 
