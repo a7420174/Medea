@@ -1,5 +1,5 @@
 [build-system]
-requires = ["setuptools>=61.0", "wheel"]
+requires = ["setuptools>=61.0,<82", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
@@ -159,6 +159,7 @@ medea-eval = "medea.cli:main"
 override-dependencies = [
     "seaborn>=0.13.2",
     "pandas>=2.2.2",
+    "setuptools>=61.0,<82",
 ]
 
 [tool.setuptools]
