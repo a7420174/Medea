@@ -80,6 +80,7 @@ from medea.tool_space.env_utils import (
     get_seed,
     get_backbone_llm,
     get_llm_provider,
+    get_panelist_llms,
 )
 from utils import (
     evaluate_prediction,
@@ -510,11 +511,7 @@ CODE_QUALITY_MAX_ITER = args.code_quality_max_iter
 
 # Panel discussion settings
 DEBATE_ROUND = args.debate_rounds
-PANELIST_LLM = args.panelists or [
-    "gemini-2.5-flash",
-    "o3-mini-0131",
-    get_backbone_llm("gpt-4o"),
-]
+PANELIST_LLM = args.panelists or get_panelist_llms()
 INCLUDE_BACKBONE_LLM = True  # Include backbone LLM in panel
 VOTE_MERGE = True  # Merge similar votes from different panelists
 

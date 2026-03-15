@@ -189,7 +189,7 @@ class ResearchPlanDraft(BaseAction):
 
     def _prepare_feedback(self, proposal_draft: Proposal) -> str:
         """Prepare feedback content from previous proposal iterations."""
-        if not proposal_draft:
+        if not proposal_draft or not isinstance(proposal_draft, Proposal):
             return ""
 
         if proposal_draft.get_current_mapper_feedback() is None:
@@ -611,6 +611,9 @@ class IntegrityVerification(BaseAction):
         Returns:
             The proposal with updated status, or a feedback message string
         """
+        if not isinstance(proposal_draft, Proposal):
+            return f"Invalid input: Expected Proposal object, got {type(proposal_draft).__name__}. Please use ContextVerification first."
+
         if proposal_draft.get_current_mapper_feedback() is None:
             return f"{proposal_draft}: Please call ContextVerification action first."
 
@@ -824,14 +827,23 @@ class ResearchPlanning(BaseAgent):
         action_name, args, PARSE_FLAG = parse_action(raw_action)
 
         # Resolve proposal_draft references from action chain
-        if "proposal_draft" in args and args["proposal_draft"] is not None:
-            for _, p_obs in reversed(action_chain):
-                if (
-                    isinstance(p_obs, Proposal)
-                    and repr(p_obs) == args["proposal_draft"]
-                ):
-                    args["proposal_draft"] = p_obs
-                    break
+        if "proposal_draft" in args:
+            val = args["proposal_draft"]
+            # Treat None-like strings as None
+            if val is None or (isinstance(val, str) and val.strip().lower() in ("none", "null", "")):
+                args["proposal_draft"] = None
+            elif isinstance(val, str):
+                # Try exact match first, then fallback to last Proposal in chain
+                resolved = None
+                last_proposal = None
+                for _, p_obs in reversed(action_chain):
+                    if isinstance(p_obs, Proposal):
+                        if last_proposal is None:
+                            last_proposal = p_obs
+                        if repr(p_obs) == val:
+                            resolved = p_obs
+                            break
+                args["proposal_draft"] = resolved if resolved is not None else last_proposal
 
         return AgentAct(name=action_name, params=args)
 
