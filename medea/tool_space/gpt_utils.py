@@ -19,8 +19,7 @@ try:
 except ImportError:
     GOOGLE_GENAI_AVAILABLE = False
 
-from ollama import ChatResponse
-from ollama import chat as OllamaChat
+from ollama import ChatResponse, Client as OllamaClient
 
 from .env_utils import get_env_with_error, get_backbone_llm, get_seed, get_llm_provider
 
@@ -419,14 +418,19 @@ def _ollama_completion(messages: List[Dict[str, str]], model: str, temperature: 
     """Handle Ollama model completion with retry on 429 (too many concurrent requests)."""
     debug_think = os.getenv("MEDEA_DEBUG_THINK", "").lower() in ("1", "true", "yes")
     think_budget = os.getenv("OLLAMA_THINK_BUDGET", "").strip()
+    # Per-request timeout in seconds (default: 600s = 10 min)
+    request_timeout = float(os.getenv("OLLAMA_REQUEST_TIMEOUT", "600"))
 
     # Budget thinking: inject /think instruction into system prompt for qwen3/qwen3.5
     if think_budget:
         _inject_think_budget(messages, think_budget)
 
+    base_url = os.getenv("OLLAMA_BASE_URL", "http://localhost:11434")
+    client = OllamaClient(host=base_url, timeout=request_timeout)
+
     for attempt in range(attempts):
         try:
-            response: ChatResponse = OllamaChat(
+            response: ChatResponse = client.chat(
                 model=model, messages=messages, options={"seed": seed, "temperature": temperature}
             )
 
