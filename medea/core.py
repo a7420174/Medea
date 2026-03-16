@@ -227,7 +227,7 @@ def medea(
     include_backbone_llm: bool = True,
     vote_merge: bool = True,
     full_instruction: bool = False,
-    timeout: int = 1200,
+    timeout: int = 2400,
 ) -> Dict[str, Any]:
     """
     Execute full Medea multi-agent system with parallel execution.
