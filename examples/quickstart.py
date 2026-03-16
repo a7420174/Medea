@@ -90,8 +90,8 @@ def main():
     
     # Literature reasoning actions
     literature_actions = [
-        LiteratureSearch(model_name=os.getenv("PAPER_JUDGE_LLM"), verbose=False),
-        PaperJudge(model_name=os.getenv("PAPER_JUDGE_LLM"), verbose=True),
+        LiteratureSearch(model_name=os.getenv("BACKBONE_LLM"), verbose=False),
+        PaperJudge(model_name=os.getenv("BACKBONE_LLM"), verbose=True),
         OpenScholarReasoning(tmp=temperature, llm_provider=os.getenv("BACKBONE_LLM"), verbose=True),
     ]
     

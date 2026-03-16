@@ -4,6 +4,9 @@ import random
 import time
 from typing import Dict, List, Optional, Union
 
+import dotenv
+dotenv.load_dotenv()
+
 import anthropic
 import torch
 from openai import AzureOpenAI, OpenAI

@@ -18,8 +18,11 @@ except ImportError:
 
 from typing import List, Dict, Any
 import os
+import dotenv
 import torch
 from concurrent.futures import ThreadPoolExecutor, as_completed
+
+dotenv.load_dotenv()
 
 # Use relative imports within package
 from ..tool_space.search_api import (
