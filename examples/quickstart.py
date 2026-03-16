@@ -144,7 +144,8 @@ def main():
         panelist_llms=[os.getenv("BACKBONE_LLM")]*3,
         include_backbone_llm=True,
         vote_merge=True,
-        timeout=2400
+        timeout=2400,
+        sequential=True,
     )
     
     # ========================================================================

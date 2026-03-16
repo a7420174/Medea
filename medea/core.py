@@ -2,7 +2,7 @@
 Core Medea agent system implementations.
 
 This module provides the main entry points for running Medea:
-- medea(): Full multi-agent system with parallel execution
+- medea(): Full multi-agent system with parallel or sequential execution
   Takes user_instruction and experiment_instruction as separate parameters
 - experiment_analysis(): Research planning + in-silico experiment
 - literature_reasoning(): Literature search and reasoning
@@ -228,11 +228,12 @@ def medea(
     vote_merge: bool = True,
     full_instruction: bool = False,
     timeout: int = 2400,
+    sequential: bool = False,
 ) -> Dict[str, Any]:
     """
-    Execute full Medea multi-agent system with parallel execution.
+    Execute full Medea multi-agent system with parallel or sequential execution.
 
-    Runs research planning, in-silico experiment, and literature reasoning in parallel,
+    Runs research planning, in-silico experiment, and literature reasoning,
     then synthesizes results through multi-round panel discussion.
 
     Args:
@@ -246,7 +247,10 @@ def medea(
         include_backbone_llm: Include backbone LLM in panel (default: True)
         vote_merge: Merge similar votes from different panelists (default: True)
         full_instruction: Use full query in panel or user instruction only (default: False)
-        timeout: Timeout in seconds for each parallel process (default: 800)
+        timeout: Timeout in seconds for each parallel process (default: 2400)
+        sequential: Run agents sequentially instead of in parallel (default: False).
+            Recommended when using a local LLM server with limited concurrency
+            (e.g., Ollama with OLLAMA_NUM_PARALLEL=1).
 
     Returns:
         Dictionary containing:
@@ -268,23 +272,21 @@ def medea(
         >>> analysis_module = Analysis(llm, actions=[...])
         >>> literature_module = LiteratureReasoning(llm, actions=[...])
         >>>
-        >>> # Run Medea (Option 1: Combined instruction)
+        >>> # Run Medea (parallel, default)
         >>> result = medea(
         ...     user_instruction="Which gene is the best therapeutic target for RA in CD4+ T cells?",
-        ...     experiment_instruction=None,
         ...     research_planning_module=research_planning_module,
         ...     analysis_module=analysis_module,
         ...     literature_module=literature_module,
-        ...     panelist_llms=['gemini-2.5-flash', 'gpt-4o', 'claude']
         ... )
         >>>
-        >>> # Alternative (Option 2: Separate instructions)
+        >>> # Run Medea (sequential, for local LLMs)
         >>> result = medea(
         ...     user_instruction="Which gene is the best therapeutic target for RA?",
-        ...     experiment_instruction="in CD4+ T cells",
         ...     research_planning_module=research_planning_module,
         ...     analysis_module=analysis_module,
-        ...     literature_module=literature_module
+        ...     literature_module=literature_module,
+        ...     sequential=True,
         ... )
         >>>
         >>> print(result['final'])  # Final hypothesis from panel discussion
@@ -295,11 +297,6 @@ def medea(
     # Reset per-sample caches and call budgets
     reset_call_budget()
 
-    print(
-        f"\n[MEDEA] Starting parallel execution: Research Planning + In-silico Experiment + Literature Reasoning",
-        flush=True,
-    )
-
     # Combine user instruction with experiment instruction for full query
     full_query = (
         user_instruction
@@ -307,12 +304,117 @@ def medea(
         else user_instruction + " " + experiment_instruction
     )
 
-    # Record the output from all agents
+    research_plan_text, analysis_response, literature_response = "None", "None", "None"
+
+    if sequential:
+        research_plan_text, analysis_response, literature_response = (
+            _run_sequential(full_query, user_instruction, research_planning_module,
+                            analysis_module, literature_module)
+        )
+    else:
+        research_plan_text, analysis_response, literature_response = (
+            _run_parallel(full_query, user_instruction, research_planning_module,
+                          analysis_module, literature_module, timeout)
+        )
+
+    # Build output dict
     agent_output_dict = {}
+
+    if research_plan_text != "None":
+        agent_output_dict["P"] = research_plan_text
+
+    if analysis_response != "None":
+        agent_output_dict["PA"] = analysis_response
+
+    if literature_response != "None":
+        agent_output_dict["R"] = literature_response
+
+    # Log the generated research plan if available
+    if research_plan_text:
+        print(f"[Research Plan]: {research_plan_text}\n", flush=True)
+
+    # LLM-based Panel Discussion
+    panel_query = user_instruction if not full_instruction else full_query
+
+    # Default panelist LLMs if not provided
+    if panelist_llms is None:
+        from .tool_space.env_utils import get_panelist_llms
+        panelist_llms = get_panelist_llms()
+
+    # Each agent output is assigned an LLM to join panel discussion
+    hypothesis_response, llm_hypothesis_response = multi_round_discussion(
+        query=panel_query,
+        include_llm=include_backbone_llm,
+        mod="diff_context",
+        panelist_llms=panelist_llms,
+        proposal_response=research_plan_text,
+        coding_response=analysis_response,
+        reasoning_response=literature_response,
+        vote_merge=vote_merge,
+        round=debate_rounds,
+    )
+
+    agent_output_dict["llm"] = llm_hypothesis_response
+    agent_output_dict["final"] = hypothesis_response
+
+    return agent_output_dict
+
+
+def _run_sequential(full_query, user_instruction, research_planning_module,
+                    analysis_module, literature_module):
+    """Run experiment analysis and literature reasoning sequentially."""
+    research_plan_text, analysis_response, literature_response = "None", "None", "None"
+
+    print(
+        f"\n[MEDEA] Starting sequential execution: "
+        f"Research Planning + In-silico Experiment → Literature Reasoning",
+        flush=True,
+    )
+
+    # Phase 1: Experiment analysis (research planning + code analysis)
+    print(f"[MEDEA] Phase 1: Running experiment analysis...", flush=True)
+    try:
+        research_plan_text, analysis_response = experiment_analysis(
+            full_query, research_planning_module, analysis_module
+        )
+        if research_plan_text != "None":
+            print(f"[MEDEA] ✓ Research plan completed", flush=True)
+        if analysis_response != "None":
+            print(f"[MEDEA] ✓ In-silico experiment completed", flush=True)
+        else:
+            print(f"[MEDEA] ⚠ In-silico experiment: no result", flush=True)
+    except Exception as e:
+        print(f"[MEDEA] ✗ Experiment analysis failed: {e}", flush=True)
+
+    # Phase 2: Literature reasoning
+    print(f"[MEDEA] Phase 2: Running literature reasoning...", flush=True)
+    try:
+        literature_response = literature_reasoning(user_instruction, literature_module)
+        if literature_response != "None":
+            print(
+                f"[MEDEA] ✓ Literature reasoning completed", flush=True
+            )
+        else:
+            print(f"[MEDEA] ⚠ Literature reasoning: no result", flush=True)
+    except Exception as e:
+        print(f"[MEDEA] ✗ Literature reasoning failed: {e}", flush=True)
+
+    return research_plan_text, analysis_response, literature_response
+
+
+def _run_parallel(full_query, user_instruction, research_planning_module,
+                  analysis_module, literature_module, timeout):
+    """Run experiment analysis and literature reasoning in parallel with timeout."""
+    research_plan_text, analysis_response, literature_response = "None", "None", "None"
+
+    print(
+        f"\n[MEDEA] Starting parallel execution: "
+        f"Research Planning + In-silico Experiment + Literature Reasoning",
+        flush=True,
+    )
+
     inputs_for_coding = (full_query, research_planning_module, analysis_module)
     inputs_for_reasoning = (user_instruction, literature_module)
-
-    research_plan_text, analysis_response, literature_response = "None", "None", "None"
 
     # Shared data structures for results
     analysis_result = mp.Manager().dict()
@@ -349,28 +451,7 @@ def medea(
             f"Error: Analysis task exceeded {timeout}s timeout. Forcefully killing process...",
             flush=True,
         )
-        try:
-            if PSUTIL_AVAILABLE:
-                parent = psutil.Process(analysis_process.pid)
-                for child in parent.children(recursive=True):
-                    try:
-                        child.kill()
-                    except psutil.NoSuchProcess:
-                        pass
-                parent.kill()
-                analysis_process.join(timeout=5)
-            else:
-                analysis_process.terminate()
-                analysis_process.join(timeout=2)
-                if analysis_process.is_alive():
-                    analysis_process.kill()
-                    analysis_process.join()
-        except psutil.NoSuchProcess if PSUTIL_AVAILABLE else Exception:
-            analysis_process.terminate()
-            analysis_process.join(timeout=2)
-            if analysis_process.is_alive():
-                analysis_process.kill()
-                analysis_process.join()
+        _kill_process(analysis_process)
 
     # Wait for literature reasoning process with timeout
     literature_process.join(timeout=timeout)
@@ -379,28 +460,7 @@ def medea(
             f"Error: Literature reasoning task exceeded {timeout}s timeout. Forcefully killing process...",
             flush=True,
         )
-        try:
-            if PSUTIL_AVAILABLE:
-                parent = psutil.Process(literature_process.pid)
-                for child in parent.children(recursive=True):
-                    try:
-                        child.kill()
-                    except psutil.NoSuchProcess:
-                        pass
-                parent.kill()
-                literature_process.join(timeout=5)
-            else:
-                literature_process.terminate()
-                literature_process.join(timeout=2)
-                if literature_process.is_alive():
-                    literature_process.kill()
-                    literature_process.join()
-        except psutil.NoSuchProcess if PSUTIL_AVAILABLE else Exception:
-            literature_process.terminate()
-            literature_process.join(timeout=2)
-            if literature_process.is_alive():
-                literature_process.kill()
-                literature_process.join()
+        _kill_process(literature_process)
 
     # Extract results
     print(f"\n[MEDEA] Collecting results from parallel processes...", flush=True)
@@ -440,42 +500,31 @@ def medea(
     else:
         print(f"[MEDEA] ⚠ Literature reasoning process: no result", flush=True)
 
-    # Save outputs
-    if research_plan_text != "None":
-        agent_output_dict["P"] = research_plan_text
+    return research_plan_text, analysis_response, literature_response
 
-    if analysis_response != "None":
-        agent_output_dict["PA"] = analysis_response
 
-    if literature_response != "None":
-        agent_output_dict["R"] = literature_response
+def _kill_process(process):
+    """Forcefully kill a multiprocessing process and its children."""
+    try:
+        if PSUTIL_AVAILABLE:
+            parent = psutil.Process(process.pid)
+            for child in parent.children(recursive=True):
+                try:
+                    child.kill()
+                except psutil.NoSuchProcess:
+                    pass
+            parent.kill()
+            process.join(timeout=5)
+        else:
+            process.terminate()
+            process.join(timeout=2)
+            if process.is_alive():
+                process.kill()
+                process.join()
+    except psutil.NoSuchProcess if PSUTIL_AVAILABLE else Exception:
+        process.terminate()
+        process.join(timeout=2)
+        if process.is_alive():
+            process.kill()
+            process.join()
 
-    # Log the generated research plan if available
-    if research_plan_text:
-        print(f"[Research Plan]: {research_plan_text}\n", flush=True)
-
-    # LLM-based Panel Discussion
-    panel_query = user_instruction if not full_instruction else full_query
-
-    # Default panelist LLMs if not provided
-    if panelist_llms is None:
-        from .tool_space.env_utils import get_panelist_llms
-        panelist_llms = get_panelist_llms()
-
-    # Each agent output is assigned an LLM to join panel discussion
-    hypothesis_response, llm_hypothesis_response = multi_round_discussion(
-        query=panel_query,
-        include_llm=include_backbone_llm,
-        mod="diff_context",
-        panelist_llms=panelist_llms,
-        proposal_response=research_plan_text,
-        coding_response=analysis_response,
-        reasoning_response=literature_response,
-        vote_merge=vote_merge,
-        round=debate_rounds,
-    )
-
-    agent_output_dict["llm"] = llm_hypothesis_response
-    agent_output_dict["final"] = hypothesis_response
-
-    return agent_output_dict

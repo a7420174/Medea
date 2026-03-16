@@ -281,6 +281,14 @@ Examples:
         help="LLM models for panel discussion (default: gemini-2.5-flash, o3-mini-0131, BACKBONE_LLM)",
     )
 
+    # Execution mode
+    parser.add_argument(
+        "--sequential",
+        action="store_true",
+        default=False,
+        help="Run agents sequentially instead of in parallel. Recommended for local LLMs with limited concurrency (e.g., Ollama)",
+    )
+
     return parser.parse_args()
 
 
@@ -630,6 +638,7 @@ def medea_unittest(df, user_template=None, agent_template=None):
                 research_planning_module,
                 analysis_module,
                 literature_module,
+                sequential=args.sequential,
             )
             end_time = time.time()
 
