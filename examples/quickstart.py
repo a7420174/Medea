@@ -52,19 +52,19 @@ def main():
     # Initialize LLM for each agent
     research_plan_llm = AgentLLM(
         llm_config=llm_config,
-        llm_name=os.getenv("BACKBONE_LLM", "gpt-4o"),
+        llm_name=os.getenv("BACKBONE_LLM"),
         verbose=True
     )
     
     analysis_llm = AgentLLM(
         llm_config=llm_config,
-        llm_name=os.getenv("BACKBONE_LLM", "gpt-4o"),
+        llm_name=os.getenv("BACKBONE_LLM"),
         verbose=True
     )
     
     literature_llm = AgentLLM(
         llm_config=llm_config,
-        llm_name=os.getenv("BACKBONE_LLM", "gpt-4o"),
+        llm_name=os.getenv("BACKBONE_LLM"),
         verbose=True
     )
     
@@ -75,24 +75,24 @@ def main():
     
     # Research planning actions
     research_plan_actions = [
-        ResearchPlanDraft(tmp=temperature, llm_provider=os.getenv("BACKBONE_LLM", "gpt-4o")),
-        ContextVerification(tmp=temperature, llm_provider=os.getenv("BACKBONE_LLM", "gpt-4o")),
-        IntegrityVerification(tmp=temperature, llm_provider=os.getenv("BACKBONE_LLM", "gpt-4o"), max_iter=2),
+        ResearchPlanDraft(tmp=temperature, llm_provider=os.getenv("BACKBONE_LLM")),
+        ContextVerification(tmp=temperature, llm_provider=os.getenv("BACKBONE_LLM")),
+        IntegrityVerification(tmp=temperature, llm_provider=os.getenv("BACKBONE_LLM"), max_iter=2),
     ]
     
     # Analysis actions
     analysis_actions = [
-        CodeGenerator(tmp=temperature, llm_provider=os.getenv("BACKBONE_LLM", "gpt-4o")),
+        CodeGenerator(tmp=temperature, llm_provider=os.getenv("BACKBONE_LLM")),
         AnalysisExecution(),
-        CodeDebug(tmp=temperature, llm_provider=os.getenv("BACKBONE_LLM", "gpt-4o")),
-        AnalysisQualityChecker(tmp=temperature, llm_provider=os.getenv("BACKBONE_LLM", "gpt-4o"), max_iter=2),
+        CodeDebug(tmp=temperature, llm_provider=os.getenv("BACKBONE_LLM")),
+        AnalysisQualityChecker(tmp=temperature, llm_provider=os.getenv("BACKBONE_LLM"), max_iter=2),
     ]
     
     # Literature reasoning actions
     literature_actions = [
-        LiteratureSearch(model_name=os.getenv("PAPER_JUDGE_LLM", "gpt-4o"), verbose=False),
-        PaperJudge(model_name=os.getenv("PAPER_JUDGE_LLM", "gpt-4o"), verbose=True),
-        OpenScholarReasoning(tmp=temperature, llm_provider=os.getenv("BACKBONE_LLM", "gpt-4o"), verbose=True),
+        LiteratureSearch(model_name=os.getenv("PAPER_JUDGE_LLM"), verbose=False),
+        PaperJudge(model_name=os.getenv("PAPER_JUDGE_LLM"), verbose=True),
+        OpenScholarReasoning(tmp=temperature, llm_provider=os.getenv("BACKBONE_LLM"), verbose=True),
     ]
     
     # ========================================================================
@@ -141,7 +141,7 @@ def main():
         analysis_module=analysis_module,
         literature_module=literature_module,
         debate_rounds=2,
-        panelist_llms=['llama3.1:8b', 'llama3.1:8b', os.getenv("BACKBONE_LLM", "gpt-4o")],
+        panelist_llms=[os.getenv("BACKBONE_LLM")]*3,
         include_backbone_llm=True,
         vote_merge=True,
         timeout=800
