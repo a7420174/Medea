@@ -1,3 +1,4 @@
+import inspect
 import json
 import os
 from typing import Any, Dict, List, Optional, Callable
@@ -89,9 +90,23 @@ class BaseAction:
         self.llm_provider = llm_provider or os.getenv("BACKBONE_LLM")
         self.temperature = tmp
         self.llm = None
+        # Cache __call__ signature for param filtering in forward()
+        self._accepted_keys = None
+        self._has_var_keyword = None
 
     def __call__(self, *args, **kwargs) -> Any:
         raise NotImplementedError("Subclasses must implement __call__")
+
+    def get_accepted_params(self):
+        """Return (accepted_keys, has_var_keyword) for __call__, cached after first use."""
+        if self._accepted_keys is None:
+            sig = inspect.signature(self.__call__)
+            self._accepted_keys = set(sig.parameters.keys()) - {'self'}
+            self._has_var_keyword = any(
+                p.kind == inspect.Parameter.VAR_KEYWORD
+                for p in sig.parameters.values()
+            )
+        return self._accepted_keys, self._has_var_keyword
 
     def to_langchain_tool(self) -> BaseTool:
         """Convert to LangChain Tool."""
@@ -248,20 +263,13 @@ Begin!"""
             return f"Action {agent_act.name} not found"
 
         # Filter params to only include valid parameters for the action's __call__
-        import inspect
         valid_params = agent_act.params
-        if hasattr(action, '__call__'):
-            sig = inspect.signature(action.__call__)
-            accepted_keys = set(sig.parameters.keys()) - {'self'}
-            has_var_keyword = any(
-                p.kind == inspect.Parameter.VAR_KEYWORD
-                for p in sig.parameters.values()
-            )
-            if not has_var_keyword and accepted_keys:
-                valid_params = {
-                    k: v for k, v in agent_act.params.items()
-                    if k in accepted_keys
-                }
+        accepted_keys, has_var_keyword = action.get_accepted_params()
+        if not has_var_keyword and accepted_keys:
+            valid_params = {
+                k: v for k, v in agent_act.params.items()
+                if k in accepted_keys
+            }
         return action(**valid_params)
 
 
@@ -318,77 +326,6 @@ class UILogger(BaseAgentLogger):
 
     def log(self, message: str):
         self.logs.append(message)
-
-
-class Proposal:
-    """Proposal object for research planning."""
-
-    _id_counter = 0
-
-    def __init__(self, user_query: str, proposal: str = None):
-        Proposal._id_counter += 1
-        self._id = Proposal._id_counter
-        self.user_query = user_query
-        self.proposal = proposal
-        self.status = "Draft"
-        self.feedback = []
-        self.id_feedback = []
-
-    def get_id(self):
-        return self._id
-
-    def get_query(self):
-        return self.user_query
-
-    def get_proposal(self):
-        return self.proposal
-
-    def get_summary(self):
-        return f"Proposal {self._id}: {self.proposal[:100]}..."
-
-    def get_current_mapper_feedback(self):
-        if self.id_feedback:
-            return self.id_feedback[-1]
-        return None
-
-    def retrieve_mapper_feedback_trace(self):
-        """Return (previous_feedback, current_feedback) tuple."""
-        if len(self.id_feedback) >= 2:
-            return self.id_feedback[-2], self.id_feedback[-1]
-        elif len(self.id_feedback) == 1:
-            return None, self.id_feedback[-1]
-        return None, None
-
-    def update_status(self, status: str):
-        self.status = status
-
-    def update_id_feedback(self, feedback):
-        if isinstance(feedback, list):
-            self.id_feedback.extend(feedback)
-        else:
-            self.id_feedback.append(feedback)
-
-    def add_feedback(self, feedback: str):
-        self.feedback.append(feedback)
-
-    def get_status(self):
-        return self.status
-
-    def get_summary(self):
-        summary = f"Proposal {self._id}: {self.proposal[:100]}..." if self.proposal else f"Proposal {self._id}"
-        if self.feedback:
-            summary += f"\nFeedback: {self.feedback[-1]}"
-        if self.id_feedback:
-            summary += f"\nID Mapping Feedback: {self.id_feedback[-1]}"
-        return summary
-
-    def log_summary(self):
-        if self.status in ("Approved",):
-            return f"<Proposal:{self._id}> approved, please do Finish action."
-        return f"<Proposal:{self._id}> status: {self.status}"
-
-    def __repr__(self):
-        return f"<Proposal:{self._id}>"
 
 
 ACTION_NOT_FOUND_MESS = "[Error] Action not found in action list."

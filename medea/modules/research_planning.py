@@ -15,11 +15,11 @@ from .langchain_agents import (
     AgentAct,
     ActObsChainType,
     AgentLogger,
-    Proposal,
     act_match,
     ThinkAct,
     PlanAct,
 )
+from .utils import Proposal
 
 try:
     from .langchain_agents import ACTION_NOT_FOUND_MESS
@@ -657,19 +657,9 @@ class IntegrityVerification(BaseAction):
             proposal_draft.update_status("Approved")
             return proposal_draft
 
-        try:
-            previous_feedback, current_feedback = (
-                proposal_draft.retrieve_mapper_feedback_trace()
-            )
-        except AttributeError:
-            # Fallback: extract feedback from id_feedback or id_mapping_feedback
-            fb = getattr(proposal_draft, 'id_feedback', None) or getattr(proposal_draft, 'id_mapping_feedback', [None])
-            if len(fb) >= 2:
-                previous_feedback, current_feedback = fb[-2], fb[-1]
-            elif len(fb) == 1:
-                previous_feedback, current_feedback = None, fb[-1]
-            else:
-                previous_feedback, current_feedback = None, None
+        previous_feedback, current_feedback = (
+            proposal_draft.retrieve_mapper_feedback_trace()
+        )
         print(f"[User query]: {proposal_draft.get_query()}", flush=True)
 
         prompt = self._build_evaluation_prompt(
@@ -912,21 +902,13 @@ class ResearchPlanning(BaseAgent):
                 act_found_flag = True
                 try:
                     # Filter params to only include valid parameters for the action's __call__
-                    import inspect
                     valid_params = agent_act.params
-                    if hasattr(action, '__call__'):
-                        sig = inspect.signature(action.__call__)
-                        accepted_keys = set(sig.parameters.keys()) - {'self'}
-                        # Only filter if action has explicit params (not just **kwargs)
-                        has_var_keyword = any(
-                            p.kind == inspect.Parameter.VAR_KEYWORD
-                            for p in sig.parameters.values()
-                        )
-                        if not has_var_keyword and accepted_keys:
-                            valid_params = {
-                                k: v for k, v in agent_act.params.items()
-                                if k in accepted_keys
-                            }
+                    accepted_keys, has_var_keyword = action.get_accepted_params()
+                    if not has_var_keyword and accepted_keys:
+                        valid_params = {
+                            k: v for k, v in agent_act.params.items()
+                            if k in accepted_keys
+                        }
                     observation = action(**valid_params)
                 except Exception as e:
                     print(e, flush=True)

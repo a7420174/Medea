@@ -8,7 +8,6 @@ import dotenv
 dotenv.load_dotenv()
 
 import anthropic
-import torch
 from openai import AzureOpenAI, OpenAI
 
 try:
@@ -107,7 +106,6 @@ def chat_completion(
     mod: str = "query",
     attempts: int = 3,
     seed: Optional[int] = None,
-    use_openrouter: bool = True,  # Deprecated: use LLM_PROVIDER_NAME env var instead
     response_format: Optional[Dict[str, str]] = None,
 ) -> str:
     """
@@ -127,7 +125,6 @@ def chat_completion(
         mod: Message mode - 'query' converts string to user message, 'chat' expects list
         attempts: Number of retry attempts on failure
         seed: Random seed for reproducibility
-        use_openrouter: Deprecated - use LLM_PROVIDER_NAME env var instead
         response_format: Optional response format (e.g., {"type": "json_object"} for JSON mode)
 
     Returns:
@@ -666,6 +663,7 @@ def _azure_completion(
     model: str,
     seed: int,
     response_format: Optional[Dict[str, str]] = None,
+    attempts: int = 3,
 ) -> str:
     """Handle Azure OpenAI completion."""
     try:
@@ -700,8 +698,11 @@ def _azure_completion(
             messages, model, temperature, seed, response_format
         )
 
-        response = client.chat.completions.create(**request_params)
-        return response.choices[0].message.content
+        def _call():
+            response = client.chat.completions.create(**request_params)
+            return response.choices[0].message.content
+
+        return _retry_with_backoff(_call, attempts, "Azure", model)
 
     except Exception as e:
         print(f"[chat_completion] Azure error (model={model}): {e}", flush=True)
@@ -857,48 +858,6 @@ def _openai_web_search(query: str, model: str, search_context_size: str) -> str:
     return _responses_api_call(client, model, query, search_context_size)
 
 
-def form_ppi_embed_dict(celltype_ppi_embed, celltype_dict, celltype_protein_dict):
-    # each node(gene) has a vector representation dim: (128,)
-    ppi_embed_dict = {}
-    for celltype, index in celltype_dict.items():
-        cell_embed_dict = {}
-        cell_embed = celltype_ppi_embed[index]
-        for i, gene in enumerate(celltype_protein_dict[celltype]):
-            gene_embed = cell_embed[i, :]
-            cell_embed_dict[gene] = gene_embed
-            # print(f"[pinnacle]: {celltype} - {gene} - {gene_embed.shape}")
-        celltype = celltype.replace(" ", "_")
-        ppi_embed_dict[celltype] = cell_embed_dict
-        # print(f"[pinnacle]: {celltype} - {len(cell_embed_dict)}")
-    return ppi_embed_dict
-
-
-def load_embed_only(embed_path: str, labels_path: str):
-    embed = torch.load(embed_path)
-    with open(labels_path, "r") as f:
-        labels_dict = f.read()
-    labels_dict = labels_dict.replace("'", '"')
-    labels_dict = json.loads(labels_dict)
-    celltypes = [c for c in labels_dict["Cell Type"] if c.startswith("CCI")]
-    celltype_dict = {ct.split("CCI_")[1]: i for i, ct in enumerate(celltypes)}
-    assert len(celltype_dict) > 0
-
-    protein_names = []
-    protein_celltypes = []
-    for c, p in zip(labels_dict["Cell Type"], labels_dict["Name"]):
-        if c.startswith("BTO") or c.startswith("CCI") or c.startswith("Sanity"):
-            continue
-        protein_names.append(p)
-        protein_celltypes.append(c)
-
-    proteins = pd.DataFrame.from_dict(
-        {"target": protein_names, "cell type": protein_celltypes}
-    )
-    celltype_protein_dict = proteins.pivot_table(
-        values="target", index="cell type", aggfunc={"target": list}
-    ).to_dict()["target"]
-    assert len(celltype_protein_dict) > 0
-    return embed, celltype_dict, celltype_protein_dict
 
 
 def get_langchain_llm(

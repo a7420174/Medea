@@ -1,25 +1,7 @@
 from .langchain_agents import AgentLogger
 from .langchain_agents import BaseAction
-from pydantic import BaseModel
 
-import time
 import uuid
-
-
-class TaskPackage(BaseModel):
-    task: str
-    instruction: str
-    completion: str = "active"
-    creator: str = ""
-    timestamp: str = time.time()
-    answer: str = ""
-    executor: str = ""
-    priority: int = 5
-    task_id: str = str(uuid.uuid4())
-
-    def __str__(self):
-        task_dict = str({"task": self.task, "instruction": self.instruction})
-        return f"""Task ID: {self.task_id}\nUser Query: {self.task}\nInstruction: {task_dict}\nTask Creator: {self.creator}\nTask Completion:{self.completion}\nAnswer: {self.answer}\nTask Executor: {self.executor}"""
 
 
 class Tool:
@@ -123,7 +105,12 @@ class Proposal:
         return summary
 
     def retrieve_mapper_feedback_trace(self):
-        return self.id_mapping_feedback[-2], self.id_mapping_feedback[-1]
+        """Return (previous_feedback, current_feedback) tuple with safe bounds."""
+        if len(self.id_mapping_feedback) >= 2:
+            return self.id_mapping_feedback[-2], self.id_mapping_feedback[-1]
+        elif len(self.id_mapping_feedback) == 1:
+            return None, self.id_mapping_feedback[-1]
+        return None, None
 
     def get_current_mapper_feedback(self):
         return self.id_mapping_feedback[-1]

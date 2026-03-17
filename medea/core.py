@@ -10,6 +10,9 @@ This module provides the main entry points for running Medea:
 
 import os
 import multiprocessing as mp
+
+# Use 'spawn' to avoid fork() deadlock warnings in multi-threaded environments
+_mp_ctx = mp.get_context("spawn")
 from typing import Dict, Optional, Any
 from medea.modules.langchain_agents import TaskPackage
 
@@ -362,33 +365,37 @@ def medea(
 
 def _run_with_timeout(func, args, timeout, label):
     """Run a function in a separate process with timeout. Returns the result or None."""
-    result_dict = mp.Manager().dict()
+    manager = _mp_ctx.Manager()
+    try:
+        result_dict = manager.dict()
 
-    def _wrapper(result_dict):
-        try:
-            result_dict["data"] = func(*args)
-            result_dict["success"] = True
-        except Exception as e:
-            import traceback
-            print(f"[MEDEA] {label} error: {type(e).__name__}: {e}", flush=True)
-            traceback.print_exc()
-            result_dict["success"] = False
+        def _wrapper(result_dict):
+            try:
+                result_dict["data"] = func(*args)
+                result_dict["success"] = True
+            except Exception as e:
+                import traceback
+                print(f"[MEDEA] {label} error: {type(e).__name__}: {e}", flush=True)
+                traceback.print_exc()
+                result_dict["success"] = False
 
-    proc = mp.Process(target=_wrapper, args=(result_dict,))
-    proc.start()
-    proc.join(timeout=timeout)
+        proc = _mp_ctx.Process(target=_wrapper, args=(result_dict,))
+        proc.start()
+        proc.join(timeout=timeout)
 
-    if proc.is_alive():
-        print(
-            f"Error: {label} exceeded {timeout}s timeout. Forcefully killing process...",
-            flush=True,
-        )
-        _kill_process(proc)
+        if proc.is_alive():
+            print(
+                f"Error: {label} exceeded {timeout}s timeout. Forcefully killing process...",
+                flush=True,
+            )
+            _kill_process(proc)
+            return None
+
+        if result_dict.get("success", False):
+            return result_dict["data"]
         return None
-
-    if result_dict.get("success", False):
-        return result_dict["data"]
-    return None
+    finally:
+        manager.shutdown()
 
 
 def _run_sequential(full_query, user_instruction, research_planning_module,
@@ -455,18 +462,19 @@ def _run_parallel(full_query, user_instruction, research_planning_module,
     inputs_for_coding = (full_query, research_planning_module, analysis_module)
     inputs_for_reasoning = (user_instruction, literature_module)
 
-    # Shared data structures for results
-    analysis_result = mp.Manager().dict()
-    literature_result = mp.Manager().dict()
+    # Single Manager for both result dicts (avoids spawning two server processes)
+    manager = _mp_ctx.Manager()
+    analysis_result = manager.dict()
+    literature_result = manager.dict()
 
     # Start both processes with module-level wrapper functions
     print(f"[MEDEA] Launching in-silico experiment process...", flush=True)
-    analysis_process = mp.Process(
+    analysis_process = _mp_ctx.Process(
         target=_experiment_wrapper, args=(inputs_for_coding, analysis_result)
     )
 
     print(f"[MEDEA] Launching literature reasoning process...", flush=True)
-    literature_process = mp.Process(
+    literature_process = _mp_ctx.Process(
         target=_reasoning_wrapper, args=(inputs_for_reasoning, literature_result)
     )
 
@@ -539,6 +547,7 @@ def _run_parallel(full_query, user_instruction, research_planning_module,
     else:
         print(f"[MEDEA] ⚠ Literature reasoning process: no result", flush=True)
 
+    manager.shutdown()
     return research_plan_text, analysis_response, literature_response
 
 
