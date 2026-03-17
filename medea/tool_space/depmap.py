@@ -347,7 +347,7 @@ def compute_depmap24q2_gene_correlations(gene_a, gene_b, data_dir=None):
     """
     # Set default data_dir if not provided
     if data_dir is None:
-        data_dir = os.path.join(_get_medeadb_path(), "depmap_24q2")
+        data_dir = os.path.join(_get_medeadb_path(), "depmap-24q2")
     
     def _log_insight(message, level="ANALYSIS"):
         """Structured logging for cell viability insights"""

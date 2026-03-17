@@ -104,7 +104,7 @@ def load_pinnacle_ppi(
     """
     # Set default embed_path if not provided
     if embed_path is None:
-        embed_path = os.path.join(_get_medeadb_path(), 'pinnacle_embeds/ppi_embed_dict.pth')
+        embed_path = os.path.join(_get_medeadb_path(), 'pinnacle-embeds/ppi_embed_dict.pth')
     
     # Load the full PPI dictionary from the specified path
     ppi_dict = torch.load(embed_path, weights_only=weights_only)

@@ -133,7 +133,7 @@ def celltype_avaliability_checker(disease_name:str, cell_type:str, model_name:st
     if model_name == "pinnacle":
         # Load full embedding dictionary to get all available cell types
         import torch
-        embed_path = os.path.join(_get_medeadb_path(), 'pinnacle_embeds/ppi_embed_dict.pth')
+        embed_path = os.path.join(_get_medeadb_path(), 'pinnacle-embeds/ppi_embed_dict.pth')
         full_embedding_dict = torch.load(embed_path, weights_only=False)
         function_name = "load_pinnacle_ppi"
     elif model_name == "transcriptformer":
@@ -220,7 +220,7 @@ def context_avalibility_checker(disease_name:str, cell_type:str, gene_list:list=
     if model_name == "pinnacle":
         # Load full embedding dictionary and find the correct cell type key
         import torch
-        embed_path = os.path.join(_get_medeadb_path(), 'pinnacle_embeds/ppi_embed_dict.pth')
+        embed_path = os.path.join(_get_medeadb_path(), 'pinnacle-embeds/ppi_embed_dict.pth')
         full_embedding_dict = torch.load(embed_path, weights_only=False)
         function_name = "load_pinnacle_ppi"
 
