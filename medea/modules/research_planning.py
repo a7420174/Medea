@@ -251,6 +251,8 @@ class ContextVerification(BaseAction):
                 tool_id_checker=json.dumps(self.checker_configs, indent=2)
             ),
         )
+        # Track checkers that failed with unrecoverable errors (e.g., missing files)
+        self._skip_checkers = set()
 
     def _load_configurations(self):
         """Load and organize checker configurations."""
@@ -458,6 +460,11 @@ class ContextVerification(BaseAction):
             checker_func = self.checker_functions[checker_name]
             print(f"Running {checker_name} with params: {params}", flush=True)
             return checker_func(**params)
+        except FileNotFoundError as e:
+            # Missing data files are unrecoverable — skip this tool permanently
+            print(f"[ContextVerification] Skipping {checker_name}: required file missing ({e})", flush=True)
+            self._skip_checkers.add(checker_name)
+            return True, f"Skipped (required file not found: {e}). This tool is unavailable and should be excluded from the proposal."
         except Exception as e:
             print(f"Error running {checker_name}: {e}", flush=True)
             return False, f"Checker error: {str(e)}"
@@ -478,6 +485,15 @@ class ContextVerification(BaseAction):
 
         proposal_text = f"[User Query]:\n{proposal_draft.get_query()}\n\n[Proposal Draft]:\n{proposal_draft.get_proposal()}"
         feedbacks, all_valid = self._validate_with_retries(proposal_text, attempts)
+
+        # If previous validation had the same failures, don't block — force proceed
+        prev_feedback = proposal_draft.get_current_mapper_feedback()
+        if not all_valid and prev_feedback and set(feedbacks) == set(prev_feedback if isinstance(prev_feedback, list) else [prev_feedback]):
+            print(
+                "[ContextVerification] Same validation errors repeated — forcing proceed to avoid loop.",
+                flush=True,
+            )
+            all_valid = True
 
         proposal_draft.update_id_feedback(feedbacks)
 
@@ -539,6 +555,15 @@ class ContextVerification(BaseAction):
             tool_name = pair.get("tool")
             checker_name = pair.get("checker_name")
             input_params = pair.get("input_params", {})
+
+            # Skip checkers that previously failed with unrecoverable errors
+            if checker_name in self._skip_checkers:
+                feedbacks.append(
+                    f"Skipped {checker_name} for {tool_name}: previously failed with unrecoverable error. "
+                    f"Exclude tool '{tool_name}' from the proposal."
+                )
+                print(f"[ContextVerification] Skipping {checker_name} (previously failed)", flush=True)
+                continue
 
             if not self._is_valid_checker_association(checker_name, tool_name):
                 continue
@@ -787,7 +812,7 @@ class ResearchPlanning(BaseAgent):
             llm=llm,
             actions=actions,
             manager=manager,
-            max_exec_steps=60,
+            max_exec_steps=20,
             logger=logger,
         )
         self.prompt_gen = BasePromptGen(
