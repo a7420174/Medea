@@ -351,17 +351,41 @@ class Proposal:
             return self.id_feedback[-1]
         return None
 
+    def retrieve_mapper_feedback_trace(self):
+        """Return (previous_feedback, current_feedback) tuple."""
+        if len(self.id_feedback) >= 2:
+            return self.id_feedback[-2], self.id_feedback[-1]
+        elif len(self.id_feedback) == 1:
+            return None, self.id_feedback[-1]
+        return None, None
+
     def update_status(self, status: str):
         self.status = status
 
-    def update_id_feedback(self, feedback: List[str]):
-        self.id_feedback.extend(feedback)
+    def update_id_feedback(self, feedback):
+        if isinstance(feedback, list):
+            self.id_feedback.extend(feedback)
+        else:
+            self.id_feedback.append(feedback)
 
     def add_feedback(self, feedback: str):
         self.feedback.append(feedback)
 
+    def get_status(self):
+        return self.status
+
+    def get_summary(self):
+        summary = f"Proposal {self._id}: {self.proposal[:100]}..." if self.proposal else f"Proposal {self._id}"
+        if self.feedback:
+            summary += f"\nFeedback: {self.feedback[-1]}"
+        if self.id_feedback:
+            summary += f"\nID Mapping Feedback: {self.id_feedback[-1]}"
+        return summary
+
     def log_summary(self):
-        return f"Proposal {self._id} approved. Status: {self.status}"
+        if self.status in ("Approved",):
+            return f"<Proposal:{self._id}> approved, please do Finish action."
+        return f"<Proposal:{self._id}> status: {self.status}"
 
     def __repr__(self):
         return f"<Proposal:{self._id}>"

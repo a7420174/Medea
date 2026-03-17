@@ -204,7 +204,7 @@ class PaperJudge(BaseAction):
     """Evaluate paper relevance using LLM-powered assessment."""
 
     def __init__(
-        self, model_name=os.getenv("PAPER_JUDGE_LLM"), verbose=True, max_workers=None
+        self, model_name=os.getenv("PAPER_JUDGE_LLM") or os.getenv("BACKBONE_LLM"), verbose=True, max_workers=None
     ) -> None:
         action_name = "PaperJudge"
         action_desc = "Evaluate whether papers in a LiteratureCollection are relevant to a research query and return a filtered LiteratureCollection"
@@ -220,8 +220,16 @@ class PaperJudge(BaseAction):
         self.verbose = verbose
         self.paper_judge = LLMPaperJudge()
         self.query_aligner = PaperQueryAligner(judge=self.paper_judge)
-        # Default to 5 workers if not specified
-        self.max_workers = max_workers if max_workers is not None else 5
+        # Default workers: match OLLAMA_NUM_PARALLEL for Ollama, otherwise 5
+        if max_workers is not None:
+            self.max_workers = max_workers
+        else:
+            ollama_parallel = os.getenv("OLLAMA_NUM_PARALLEL", "").strip()
+            provider = os.getenv("LLM_PROVIDER_NAME", "").strip().lower()
+            if provider == "ollama" or ollama_parallel:
+                self.max_workers = int(ollama_parallel) if ollama_parallel else 1
+            else:
+                self.max_workers = 5
         # Note: No threading.Lock() here to keep agent picklable for multiprocessing
 
     def _evaluate_single_paper(
