@@ -657,9 +657,19 @@ class IntegrityVerification(BaseAction):
             proposal_draft.update_status("Approved")
             return proposal_draft
 
-        previous_feedback, current_feedback = (
-            proposal_draft.retrieve_mapper_feedback_trace()
-        )
+        try:
+            previous_feedback, current_feedback = (
+                proposal_draft.retrieve_mapper_feedback_trace()
+            )
+        except AttributeError:
+            # Fallback: extract feedback from id_feedback or id_mapping_feedback
+            fb = getattr(proposal_draft, 'id_feedback', None) or getattr(proposal_draft, 'id_mapping_feedback', [None])
+            if len(fb) >= 2:
+                previous_feedback, current_feedback = fb[-2], fb[-1]
+            elif len(fb) == 1:
+                previous_feedback, current_feedback = None, fb[-1]
+            else:
+                previous_feedback, current_feedback = None, None
         print(f"[User query]: {proposal_draft.get_query()}", flush=True)
 
         prompt = self._build_evaluation_prompt(

@@ -333,7 +333,7 @@ def search_openalex_papers(
     year_from: Optional[int] = None, 
     year_to: Optional[int] = None, 
     open_access: Optional[bool] = None,
-    model_name: str = 'gpt-4o',
+    model_name: str = None,
     verbose: bool = True
 ) -> tuple[List[Dict[str, Any]], List[str]]:
     """

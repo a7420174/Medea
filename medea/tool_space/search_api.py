@@ -33,6 +33,7 @@ sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
 from .gpt_utils import chat_completion
 from .open_scholar import OpenScholar, search_paper_via_query
+from .env_utils import get_backbone_llm
 from . import instructions
 
 
@@ -47,9 +48,9 @@ class KeywordExtractor:
         self.verbose = verbose
     
     def extract_keywords(
-        self, 
-        question: str, 
-        model_name: str = 'gpt-4o',
+        self,
+        question: str,
+        model_name: str = None,
         query_num: int = 4,
         platform: str = 'semantic_scholar',
         max_retries: int = 3
@@ -67,9 +68,12 @@ class KeywordExtractor:
         Returns:
             List of optimized search queries
         """
+        if model_name is None:
+            model_name = get_backbone_llm()
+
         if self.verbose:
             print(f"[KEYWORD_GEN] Generating {query_num} keywords for {platform} using {model_name}")
-        
+
         enhanced_question = self._enhance_question_for_platform(question, platform)
         
         for attempt in range(max_retries):
@@ -163,13 +167,13 @@ class KeywordExtractor:
     
         return query if query else None
 
-    def _extract_fallback_keywords(self, question: str, num_queries: int = 4, model_name: str = 'gpt-4o') -> List[str]:
+    def _extract_fallback_keywords(self, question: str, num_queries: int = 4, model_name: str = None) -> List[str]:
         """Fallback keyword extraction without LLM calls (to avoid timeout cascades)."""
         if self.verbose:
             print("[KEYWORD_GEN] Using text-based fallback extraction (skipping LLM)")
         return self._text_analysis_fallback(question, num_queries)
     
-    def _rule_based_keyword_extraction(self, question: str, num_queries: int = 4, model_name: str = 'gpt-4o') -> List[str]:
+    def _rule_based_keyword_extraction(self, question: str, num_queries: int = 4, model_name: str = None) -> List[str]:
         """
         LLM-powered keyword extraction as ultimate fallback.
         Uses intelligent analysis without any hardcoded patterns.
@@ -838,7 +842,7 @@ class OpenScholarReasoning:
     def reason(
         self,
         query: str,
-        model_name: str = "gpt-4o",
+        model_name: str = None,
         default_reranker: str = "OpenSciLM/OpenScholar_Reranker",
         **kwargs
     ) -> Tuple[str, Optional[Any]]:
@@ -854,6 +858,9 @@ class OpenScholarReasoning:
         Returns:
             Tuple of (answer, metadata)
         """
+        if model_name is None:
+            model_name = get_backbone_llm()
+
         # Search for papers
         ss_retrieved_passages = self.searcher.search(
             question=query, 
@@ -947,7 +954,7 @@ _searcher = SemanticScholarSearch(_extractor)
 _reasoning = OpenScholarReasoning()
 
 # Legacy function wrappers
-def retrieve_keywords(question, model_name='gpt-4o', query_num=4, platform='semantic_scholar', max_retries=3, verbose=True):
+def retrieve_keywords(question, model_name=None, query_num=4, platform='semantic_scholar', max_retries=3, verbose=True):
     """Legacy wrapper for keyword extraction."""
     # Create a temporary extractor with the specified verbose setting
     extractor = KeywordExtractor(verbose=verbose)
