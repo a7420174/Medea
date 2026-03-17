@@ -422,7 +422,19 @@ def _ollama_completion(messages: List[Dict[str, str]], model: str, temperature: 
     request_timeout = float(os.getenv("OLLAMA_REQUEST_TIMEOUT", "300"))
 
     # Budget thinking: inject /think instruction into system prompt for qwen3/qwen3.5
-    if think_budget:
+    # Warn if think budget is high relative to timeout (thinking slows responses significantly)
+    if think_budget and think_budget.lower() not in ("off", "none", "0"):
+        try:
+            budget_tokens = int(think_budget)
+            if budget_tokens > 256 and request_timeout <= 300:
+                print(
+                    f"[chat_completion] Warning: OLLAMA_THINK_BUDGET={budget_tokens} with "
+                    f"OLLAMA_REQUEST_TIMEOUT={request_timeout}s may cause timeouts. "
+                    f"Consider reducing think budget or increasing timeout.",
+                    flush=True,
+                )
+        except ValueError:
+            pass
         _inject_think_budget(messages, think_budget)
 
     client = OllamaClient(timeout=request_timeout)
@@ -447,8 +459,14 @@ def _ollama_completion(messages: List[Dict[str, str]], model: str, temperature: 
             return content
 
         except Exception as e:
-            err_str = str(e)
-            is_rate_limit = "429" in err_str or "too many concurrent requests" in err_str.lower()
+            err_str = str(e).lower()
+            is_rate_limit = "429" in err_str or "too many concurrent requests" in err_str
+            is_timeout = "timed out" in err_str or "timeout" in err_str
+
+            if is_timeout:
+                # Timeout errors are not retryable — the model is too slow
+                print(f"[chat_completion] Ollama timeout (model={model}): {e}", flush=True)
+                return f"I cannot help with it - Ollama error (model={model})"
 
             if is_rate_limit and attempt < attempts - 1:
                 wait_time = (2 ** attempt) + 2

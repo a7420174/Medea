@@ -164,46 +164,10 @@ class KeywordExtractor:
         return query if query else None
 
     def _extract_fallback_keywords(self, question: str, num_queries: int = 4, model_name: str = 'gpt-4o') -> List[str]:
-        """Intelligent fallback keyword extraction using LLM-powered analysis."""
+        """Fallback keyword extraction without LLM calls (to avoid timeout cascades)."""
         if self.verbose:
-            print("[KEYWORD_GEN] Using intelligent fallback extraction")
-        
-        try:
-            # First attempt: Simple LLM call
-            fallback_prompt = f"""
-Extract {num_queries} search queries from this question for academic literature search.
-Focus on key concepts, entities, and terms that would be most effective for finding relevant papers.
-
-Question: {question}
-
-Return {num_queries} search queries, one per line, without numbering or bullets:
-"""
-            
-            response = chat_completion(fallback_prompt, model=model_name)
-            
-            lines = [line.strip() for line in response.strip().split('\n') if line.strip()]
-            queries = []
-            
-            for line in lines[:num_queries]:
-                cleaned = line
-                cleaned = re.sub(r'^\d+\.?\s*', '', cleaned)  # Remove numbering
-                cleaned = re.sub(r'^[-•*]\s*', '', cleaned)    # Remove bullets
-                cleaned = cleaned.strip('"\'')                  # Remove quotes
-                
-                if cleaned and len(cleaned.split()) >= 2:
-                    queries.append(cleaned)
-            
-            if len(queries) >= 2:
-                if self.verbose:
-                    print(f"[KEYWORD_GEN] LLM fallback generated {len(queries)} queries")
-                return queries[:num_queries]
-                
-        except Exception as e:
-            if self.verbose:
-                print(f"[KEYWORD_GEN] ERROR: LLM fallback failed: {e}")
-        
-        # Rule-based fallback
-        return self._rule_based_keyword_extraction(question, num_queries, model_name)
+            print("[KEYWORD_GEN] Using text-based fallback extraction (skipping LLM)")
+        return self._text_analysis_fallback(question, num_queries)
     
     def _rule_based_keyword_extraction(self, question: str, num_queries: int = 4, model_name: str = 'gpt-4o') -> List[str]:
         """
