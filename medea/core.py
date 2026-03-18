@@ -363,43 +363,41 @@ def medea(
     return agent_output_dict
 
 
-def _timeout_wrapper(func, args, label, result_dict):
-    """Top-level wrapper for _run_with_timeout so it can be pickled by spawn context."""
-    try:
-        result_dict["data"] = func(*args)
-        result_dict["success"] = True
-    except Exception as e:
-        import traceback
-        print(f"[MEDEA] {label} error: {type(e).__name__}: {e}", flush=True)
-        traceback.print_exc()
-        result_dict["success"] = False
-
-
 def _run_with_timeout(func, args, timeout, label):
-    """Run a function in a separate process with timeout. Returns the result or None."""
-    manager = _mp_ctx.Manager()
-    try:
-        result_dict = manager.dict()
+    """Run a function in a thread with timeout. Returns the result or None.
 
-        proc = _mp_ctx.Process(
-            target=_timeout_wrapper, args=(func, args, label, result_dict)
+    Uses threading instead of multiprocessing to avoid pickle issues with
+    LangChain/Pydantic objects under the 'spawn' multiprocessing context.
+    """
+    import threading
+
+    result_container = {"data": None, "success": False, "error": None}
+
+    def _wrapper():
+        try:
+            result_container["data"] = func(*args)
+            result_container["success"] = True
+        except Exception as e:
+            import traceback
+            print(f"[MEDEA] {label} error: {type(e).__name__}: {e}", flush=True)
+            traceback.print_exc()
+            result_container["success"] = False
+
+    thread = threading.Thread(target=_wrapper, daemon=True)
+    thread.start()
+    thread.join(timeout=timeout)
+
+    if thread.is_alive():
+        print(
+            f"Error: {label} exceeded {timeout}s timeout.",
+            flush=True,
         )
-        proc.start()
-        proc.join(timeout=timeout)
-
-        if proc.is_alive():
-            print(
-                f"Error: {label} exceeded {timeout}s timeout. Forcefully killing process...",
-                flush=True,
-            )
-            _kill_process(proc)
-            return None
-
-        if result_dict.get("success", False):
-            return result_dict["data"]
+        # Daemon thread will be cleaned up on process exit
         return None
-    finally:
-        manager.shutdown()
+
+    if result_container["success"]:
+        return result_container["data"]
+    return None
 
 
 def _run_sequential(full_query, user_instruction, research_planning_module,
