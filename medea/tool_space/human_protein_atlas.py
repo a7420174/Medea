@@ -1487,10 +1487,19 @@ class HPAGetComprehensiveBiologicalProcessTool(HPASearchApiTool):
         include_comparative_analysis = arguments.get("include_comparative_analysis", False)
         max_processes = arguments.get("max_processes", 50)
         filter_critical_only = arguments.get("filter_critical_only", False)
-        
+
         if not gene_name:
             return {"error": "Parameter 'gene_name' is required"}
-        
+
+        # Handle list input: run analysis for each gene and return combined results
+        if isinstance(gene_name, list):
+            print(f"[HPAGetComprehensiveBiologicalProcessTool] Batch processing {len(gene_name)} genes", flush=True)
+            combined = {}
+            for g in gene_name:
+                single_args = {**arguments, "gene_name": g}
+                combined[g] = self.run(single_args)
+            return combined
+
         try:
             # Step 1: Get basic biological process data using the existing tool
             basic_tool = HPAGetBiologicalProcessTool({})
@@ -2053,27 +2062,53 @@ class HPAGetEnhancedComparativeExpressionTool(HPASearchApiTool):
             Dict containing comprehensive comparative expression analysis
         """
         gene_name = arguments.get("gene_name")
-        cell_line = (arguments.get("cell_line") or "").lower()
+        cell_line = (arguments.get("cell_line") or "").lower().strip()
         include_statistical_analysis = arguments.get("include_statistical_analysis", True)
         include_expression_breakdown = arguments.get("include_expression_breakdown", True)
         include_therapeutic_insights = arguments.get("include_therapeutic_insights", True)
-        
+
         if not gene_name:
             return {"error": "Parameter 'gene_name' is required"}
+
+        # Handle list input: run analysis for each gene and return combined results
+        if isinstance(gene_name, list):
+            print(f"[HPAGetEnhancedComparativeExpressionTool] Batch processing {len(gene_name)} genes", flush=True)
+            combined = {}
+            for g in gene_name:
+                single_args = {**arguments, "gene_name": g}
+                combined[g] = self.run(single_args)
+            return combined
+
         if not cell_line:
             return {"error": "Parameter 'cell_line' is required"}
-        
+
+        # Auto-map cell type/origin/description keywords to supported cell lines
+        # Built dynamically from self.cell_line_data metadata
+        if cell_line not in self.cell_line_data:
+            best_match = None
+            for line_name, meta in self.cell_line_data.items():
+                origin = meta.get("origin", "").lower()
+                cell_type = meta.get("type", "").lower()
+                # Bidirectional substring match: input in metadata OR metadata in input
+                if (origin and (origin in cell_line or cell_line in origin)) or \
+                   (cell_type and (cell_type in cell_line or cell_line in cell_type)):
+                    best_match = line_name
+                    break
+            if best_match:
+                print(f"[HPAGetEnhancedComparativeExpressionTool] Auto-mapped '{cell_line}' → '{best_match}'", flush=True)
+                cell_line = best_match
+
         # Validate cell line with enhanced recommendations
         cell_line_info = self.cell_line_data.get(cell_line)
         if not cell_line_info:
             available_lines = list(self.cell_line_data.keys())
-            
+
             # Find similar cell line names
             similar_lines = []
             for valid_line in available_lines:
                 if cell_line in valid_line or valid_line in cell_line:
                     similar_lines.append(valid_line)
-            
+
             error_msg = f"Unsupported cell_line '{cell_line}'. "
             if similar_lines:
                 error_msg += f"Similar options: {similar_lines}. "

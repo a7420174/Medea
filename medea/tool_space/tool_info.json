@@ -476,7 +476,7 @@
         "import_path": "from medea.tool_space.human_protein_atlas import HPAGetEnhancedComparativeExpressionTool",
         "input_params": [
             {"name": "gene_name", "type": "str", "description": "Gene name or symbol (e.g., 'TP53', 'BRCA1', 'EGFR')"},
-            {"name": "cell_line", "type": "str", "description": "Cell line name from supported list: ishikawa, hela, mcf7, a549, hepg2, jurkat, pc3, rh30, siha, u251"},
+            {"name": "cell_line", "type": "str", "description": "Cell line name. MUST be one of: ishikawa (endometrial), hela (cervical), mcf7 (breast), a549 (lung), hepg2 (liver), jurkat (T cell leukemia — use for T cell queries), pc3 (prostate), rh30 (rhabdomyosarcoma), siha (cervical), u251 (glioblastoma). For T cell / CD4+ / CD8+ / immune cell queries, use 'jurkat'."},
             {"name": "include_statistical_analysis", "type": "bool", "description": "Whether to include statistical significance analysis (default: True). Provides statistical significance, effect size, and confidence levels."},
             {"name": "include_expression_breakdown", "type": "bool", "description": "Whether to include detailed expression breakdown (default: True). Categorizes expression levels and calculates fold changes."},
             {"name": "include_therapeutic_insights", "type": "bool", "description": "Whether to include therapeutic relevance insights (default: True). Provides therapeutic potential, targeting strategy, and biomarker assessment."}

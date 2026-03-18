@@ -393,18 +393,21 @@ class ContextVerification(BaseAction):
         if not mentioned_tools:
             return []
 
-        # 2. Extract entities from proposal text
-        # Gene symbols: 2-10 uppercase letters/digits (e.g., CD79A, MS4A1, FCGR3A)
-        gene_pattern = r'\b([A-Z][A-Z0-9]{1,9})\b'
-        # Common non-gene uppercase words to exclude
+        # 2. Extract entities — use ONLY the user query section to avoid
+        #    picking up uppercase words from proposal boilerplate (PROPOSAL, STRUCTURE, etc.)
+        query_match = _re.search(r'\[User Query\]:\s*\n?(.*?)(?:\n\n|\[Proposal)', proposal_text, _re.DOTALL)
+        query_section = query_match.group(1).strip() if query_match else proposal_text[:500]
+
+        # Gene symbols: typical pattern like CD79A, MS4A1, FCGR3A, TP53
+        gene_pattern = r'\b([A-Z][A-Z0-9]{2,9})\b'
         _exclude = {
-            "THE", "AND", "FOR", "THIS", "THAT", "WITH", "FROM", "TOOL", "STEP",
-            "NOTE", "TRUE", "FALSE", "NONE", "NULL", "INPUT", "OUTPUT", "ACTION",
+            "THE", "AND", "FOR", "THIS", "THAT", "WITH", "FROM", "WHICH",
+            "TRUE", "FALSE", "NONE", "NULL",
             "HPA", "API", "RNA", "DNA", "PPI", "CGE", "LLM",
         }
         candidate_genes = [
-            m for m in _re.findall(gene_pattern, proposal_text)
-            if m not in _exclude and len(m) >= 3
+            m for m in _re.findall(gene_pattern, query_section)
+            if m not in _exclude
         ]
         # Deduplicate while preserving order
         seen_genes = set()

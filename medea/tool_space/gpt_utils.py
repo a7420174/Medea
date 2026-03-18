@@ -649,13 +649,18 @@ def _openai_completion(
     seed: int,
     response_format: Optional[Dict[str, str]] = None,
 ) -> str:
-    """Handle direct OpenAI API completion (not Azure, not OpenRouter)."""
+    """Handle direct OpenAI API completion (not Azure, not OpenRouter).
+
+    Also works with any OpenAI-compatible server (e.g., vLLM, TGI) by setting
+    OPENAI_API_BASE to the server URL (e.g., http://localhost:8000/v1).
+    """
     try:
         api_key = get_env_with_error(
             "OPENAI_API_KEY", required=True, description="using OpenAI API"
         )
 
-        client = OpenAI(api_key=api_key)
+        base_url = os.environ.get("OPENAI_API_BASE")
+        client = OpenAI(api_key=api_key, **({"base_url": base_url} if base_url else {}))
         request_params = _build_openai_request_params(
             messages, model, temperature, seed, response_format
         )
