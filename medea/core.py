@@ -363,23 +363,27 @@ def medea(
     return agent_output_dict
 
 
+def _timeout_wrapper(func, args, label, result_dict):
+    """Top-level wrapper for _run_with_timeout so it can be pickled by spawn context."""
+    try:
+        result_dict["data"] = func(*args)
+        result_dict["success"] = True
+    except Exception as e:
+        import traceback
+        print(f"[MEDEA] {label} error: {type(e).__name__}: {e}", flush=True)
+        traceback.print_exc()
+        result_dict["success"] = False
+
+
 def _run_with_timeout(func, args, timeout, label):
     """Run a function in a separate process with timeout. Returns the result or None."""
     manager = _mp_ctx.Manager()
     try:
         result_dict = manager.dict()
 
-        def _wrapper(result_dict):
-            try:
-                result_dict["data"] = func(*args)
-                result_dict["success"] = True
-            except Exception as e:
-                import traceback
-                print(f"[MEDEA] {label} error: {type(e).__name__}: {e}", flush=True)
-                traceback.print_exc()
-                result_dict["success"] = False
-
-        proc = _mp_ctx.Process(target=_wrapper, args=(result_dict,))
+        proc = _mp_ctx.Process(
+            target=_timeout_wrapper, args=(func, args, label, result_dict)
+        )
         proc.start()
         proc.join(timeout=timeout)
 
