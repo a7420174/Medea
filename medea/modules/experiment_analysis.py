@@ -432,7 +432,9 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
         try:
             # Wait for the process to complete with a timeout
-            p.wait(timeout=600)  # wait up to 60 seconds
+            # Use 2x OLLAMA_REQUEST_TIMEOUT to allow for multiple LLM calls within code
+            _code_timeout = int(float(os.environ.get("OLLAMA_REQUEST_TIMEOUT", "300")) * 2)
+            p.wait(timeout=_code_timeout)
         except subprocess.TimeoutExpired:
             p.kill()
             print("Subprocess timed out and was killed.")
@@ -455,11 +457,20 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
             return (
                 not s
                 or "Warning:" in line
+                or "Warning " in line
                 or "warn(" in line
+                or "FutureWarning" in line
+                or "DeprecationWarning" in line
+                or "UserWarning" in line
                 or s[0] in '"{}'
                 or s.startswith(("loading ", "Model config", "You're using"))
                 or "it/s]" in line
                 or "%|" in line
+                or "google.generativeai" in line
+                or "google.genai" in line
+                or "switch to the" in line
+                or "See README" in line
+                or "frozen importlib" in line
             )
 
         filtered_stderr = "\n".join(l for l in stderr.splitlines() if not _is_noise(l))

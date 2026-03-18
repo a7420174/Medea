@@ -374,6 +374,113 @@ class ContextVerification(BaseAction):
             print(f"Failed to extract context pairs: {e}", flush=True)
             return []
 
+    def _rule_based_context_pairs(self, proposal_text: str) -> List[Dict]:
+        """Fallback: extract checker pairs from proposal text using pattern matching.
+
+        When the LLM fails to produce valid checker pairs, scan the proposal for
+        tool names that have associated checkers and build pairs from entities
+        (genes, disease, cell type) found in the proposal/query text.
+        """
+        import re as _re
+
+        pairs: List[Dict] = []
+
+        # 1. Find which tools with checkers are mentioned in the proposal
+        mentioned_tools = [
+            tool for tool in self.tool_to_checker
+            if tool.lower() in proposal_text.lower()
+        ]
+        if not mentioned_tools:
+            return []
+
+        # 2. Extract entities from proposal text
+        # Gene symbols: 2-10 uppercase letters/digits (e.g., CD79A, MS4A1, FCGR3A)
+        gene_pattern = r'\b([A-Z][A-Z0-9]{1,9})\b'
+        # Common non-gene uppercase words to exclude
+        _exclude = {
+            "THE", "AND", "FOR", "THIS", "THAT", "WITH", "FROM", "TOOL", "STEP",
+            "NOTE", "TRUE", "FALSE", "NONE", "NULL", "INPUT", "OUTPUT", "ACTION",
+            "HPA", "API", "RNA", "DNA", "PPI", "CGE", "LLM",
+        }
+        candidate_genes = [
+            m for m in _re.findall(gene_pattern, proposal_text)
+            if m not in _exclude and len(m) >= 3
+        ]
+        # Deduplicate while preserving order
+        seen_genes = set()
+        genes = []
+        for g in candidate_genes:
+            if g not in seen_genes:
+                seen_genes.add(g)
+                genes.append(g)
+
+        # Disease: look for common disease phrases (lowercase search)
+        lower_text = proposal_text.lower()
+        disease = None
+        # Try to extract disease from phrases like "disease: X" or "for X"
+        disease_match = _re.search(
+            r'(?:disease[:\s]+|for\s+)([\w\s\-]+(?:arthritis|lupus|cancer|syndrome|disease|disorder|sclerosis))',
+            lower_text,
+        )
+        if disease_match:
+            disease = disease_match.group(1).strip()
+
+        # Cell type: look for cell type phrases
+        cell_type = None
+        cell_match = _re.search(
+            r'((?:cd\d+[+\-]?\s*)?(?:alpha[- ]beta\s+)?(?:t|b|nk|mast|dendritic|monocyte|macrophage|neutrophil)[\w\s\-]*cell[s]?)',
+            lower_text,
+        )
+        if cell_match:
+            cell_type = cell_match.group(1).strip()
+
+        # User query line (first line after [User Query]:)
+        query_match = _re.search(r'\[User Query\]:\s*\n?(.*?)(?:\n\n|\[)', proposal_text, _re.DOTALL)
+        user_query = query_match.group(1).strip() if query_match else ""
+
+        # 3. Build pairs for each mentioned tool
+        for tool in mentioned_tools:
+            checker_name = self.tool_to_checker[tool]
+            param_config = self._get_param_config(checker_name)
+            if not param_config:
+                continue
+
+            params: Dict = {}
+            for pname, pdef in param_config.items():
+                ptype = pdef.get("param_type", "str")
+                if pname == "user_query":
+                    params[pname] = user_query
+                elif pname in ("disease_name", "disease"):
+                    if disease:
+                        params[pname] = disease
+                elif pname in ("cell_type", "celltype"):
+                    if cell_type:
+                        params[pname] = cell_type
+                elif pname == "state":
+                    params[pname] = "disease"
+                elif "gene" in pname and ("list" in ptype or "List" in ptype):
+                    if genes:
+                        params[pname] = genes
+                elif "gene" in pname:
+                    if genes:
+                        params[pname] = genes[0]
+
+            # Only add if we have at least one non-query param
+            non_query_params = {k: v for k, v in params.items() if k != "user_query"}
+            if non_query_params:
+                pairs.append({
+                    "tool": tool,
+                    "checker_name": checker_name,
+                    "input_params": params,
+                })
+
+        if pairs:
+            print(
+                f"[ContextVerification] Rule-based fallback extracted {len(pairs)} pairs",
+                flush=True,
+            )
+        return pairs
+
     def _get_param_config(self, checker_name: str) -> Dict:
         """Get parameter configuration for a checker."""
         for config in self.checker_configs:
@@ -516,18 +623,14 @@ class ContextVerification(BaseAction):
             try:
                 pairs_to_check = self._extract_context_pairs(proposal_text)
                 if not pairs_to_check:
-                    if attempt < attempts - 1:
-                        print(
-                            f"[ContextVerification] No pairs extracted (attempt {attempt + 1}/{attempts}), retrying...",
-                            flush=True,
-                        )
-                        continue
-                    # Final attempt: accept as no checks needed
+                    # LLM failed — try rule-based fallback
+                    pairs_to_check = self._rule_based_context_pairs(proposal_text)
+                if not pairs_to_check:
                     feedbacks = [
-                        "No validation requirements extracted from proposal (context checker returned empty)"
+                        "No validation requirements extracted from proposal"
                     ]
                     print(
-                        f"[ContextVerification] Warning: context checker returned no pairs after {attempts} attempts. Passing with warning.",
+                        f"[ContextVerification] No pairs extracted (LLM + fallback). Passing with warning.",
                         flush=True,
                     )
                     break
