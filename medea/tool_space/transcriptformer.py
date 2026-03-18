@@ -12,6 +12,7 @@ Auto-generation (requires env vars):
 """
 
 import os
+import re
 import sys
 import json
 import gzip
@@ -311,7 +312,10 @@ class TranscriptformerEmbeddingTool:
             return None, context_info
 
         # --- Retrieve Embeddings ---
-        group_key = f"{cell_type}_{state}".replace(' ', '_').replace('(', '').replace(')', '')
+        # Normalize group_key the same way tf_inference._safe_group_name does
+        raw_key = f"{cell_type}_{state}"
+        group_key = raw_key.replace(" ", "_").replace("-", "_").replace(".", "_").replace(",", "_").lower()
+        group_key = re.sub(r"[^\w.-]+", "_", group_key)
         
         if group_key not in metadata['groups_meta']:
             available_keys = list(metadata['groups_meta'].keys())

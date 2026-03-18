@@ -363,89 +363,49 @@ def medea(
     return agent_output_dict
 
 
-def _run_with_timeout(func, args, timeout, label):
-    """Run a function in a thread with timeout. Returns the result or None.
-
-    Uses threading instead of multiprocessing to avoid pickle issues with
-    LangChain/Pydantic objects under the 'spawn' multiprocessing context.
-    """
-    import threading
-
-    result_container = {"data": None, "success": False, "error": None}
-
-    def _wrapper():
-        try:
-            result_container["data"] = func(*args)
-            result_container["success"] = True
-        except Exception as e:
-            import traceback
-            print(f"[MEDEA] {label} error: {type(e).__name__}: {e}", flush=True)
-            traceback.print_exc()
-            result_container["success"] = False
-
-    thread = threading.Thread(target=_wrapper, daemon=True)
-    thread.start()
-    thread.join(timeout=timeout)
-
-    if thread.is_alive():
-        print(
-            f"Error: {label} exceeded {timeout}s timeout.",
-            flush=True,
-        )
-        # Daemon thread will be cleaned up on process exit
-        return None
-
-    if result_container["success"]:
-        return result_container["data"]
-    return None
-
-
 def _run_sequential(full_query, user_instruction, research_planning_module,
                     analysis_module, literature_module, timeout):
-    """Run experiment analysis and literature reasoning sequentially with per-phase timeout."""
+    """Run experiment analysis and literature reasoning sequentially.
+
+    No per-phase timeout is applied here. Individual LLM call timeouts are
+    handled by OLLAMA_REQUEST_TIMEOUT (per-request) so that each phase runs
+    to completion and partial results are preserved.
+    """
     research_plan_text, analysis_response, literature_response = "None", "None", "None"
 
     print(
-        f"\n[MEDEA] Starting sequential execution (timeout={timeout}s per phase): "
+        f"\n[MEDEA] Starting sequential execution: "
         f"Research Planning + In-silico Experiment → Literature Reasoning",
         flush=True,
     )
 
     # Phase 1: Experiment analysis (research planning + code analysis)
     print(f"[MEDEA] Phase 1: Running experiment analysis...", flush=True)
-    result = _run_with_timeout(
-        experiment_analysis,
-        (full_query, research_planning_module, analysis_module),
-        timeout,
-        "Experiment analysis",
-    )
-    if result is not None:
-        research_plan_text, analysis_response = result
-        if research_plan_text != "None":
-            print(f"[MEDEA] ✓ Research plan completed", flush=True)
-        if analysis_response != "None":
-            print(f"[MEDEA] ✓ In-silico experiment completed", flush=True)
-        else:
-            print(f"[MEDEA] ⚠ In-silico experiment: no result", flush=True)
-    else:
-        print(f"[MEDEA] ⚠ Experiment analysis: no result", flush=True)
+    try:
+        result = experiment_analysis(full_query, research_planning_module, analysis_module)
+        if result is not None:
+            research_plan_text, analysis_response = result
+            if research_plan_text != "None":
+                print(f"[MEDEA] ✓ Research plan completed", flush=True)
+            if analysis_response != "None":
+                print(f"[MEDEA] ✓ In-silico experiment completed", flush=True)
+            else:
+                print(f"[MEDEA] ⚠ In-silico experiment: no result", flush=True)
+    except Exception as e:
+        print(f"[MEDEA] ⚠ Experiment analysis error: {type(e).__name__}: {e}", flush=True)
 
     # Phase 2: Literature reasoning
     print(f"[MEDEA] Phase 2: Running literature reasoning...", flush=True)
-    result = _run_with_timeout(
-        literature_reasoning,
-        (user_instruction, literature_module),
-        timeout,
-        "Literature reasoning",
-    )
-    if result is not None:
-        literature_response = result
-        if literature_response != "None":
-            print(f"[MEDEA] ✓ Literature reasoning completed", flush=True)
-        else:
-            print(f"[MEDEA] ⚠ Literature reasoning: no result", flush=True)
-    else:
-        print(f"[MEDEA] ⚠ Literature reasoning: no result", flush=True)
+    try:
+        result = literature_reasoning(user_instruction, literature_module)
+        if result is not None:
+            literature_response = result
+            if literature_response != "None":
+                print(f"[MEDEA] ✓ Literature reasoning completed", flush=True)
+            else:
+                print(f"[MEDEA] ⚠ Literature reasoning: no result", flush=True)
+    except Exception as e:
+        print(f"[MEDEA] ⚠ Literature reasoning error: {type(e).__name__}: {e}", flush=True)
 
     return research_plan_text, analysis_response, literature_response
 
