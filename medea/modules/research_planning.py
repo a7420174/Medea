@@ -95,6 +95,9 @@ class ProposalToolSelector:
             matches = re.search(PYTHON_CODE_BLOCK_PATTERN, response, re.DOTALL)
             return matches.group(1).strip() if matches else response.strip()
 
+        # Normalize full-width characters from CJK-influenced models (qwen, etc.)
+        response = response.replace('，', ',').replace('：', ':').replace('"', '"').replace('"', '"')
+
         # Try to extract a bare list (e.g., ["tool1", "tool2"])
         list_match = re.search(r'\[.*\]', response, re.DOTALL)
         if list_match:
@@ -122,9 +125,10 @@ class ProposalToolSelector:
                 response = self._extract_code_block(response)
 
                 relevant_tools = ast.literal_eval(response)
-                if isinstance(relevant_tools, list):
+                if isinstance(relevant_tools, list) and len(relevant_tools) > 0:
                     break
-                raise ValueError("LLM response is not a valid list.")
+                if isinstance(relevant_tools, list) and len(relevant_tools) == 0:
+                    raise ValueError("LLM returned empty tool list")
 
             except Exception as e:
                 print(f"Tool selection error on attempt {attempt + 1}: {e}", flush=True)
