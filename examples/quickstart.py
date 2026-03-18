@@ -140,11 +140,11 @@ def main():
         research_planning_module=research_planning_module,
         analysis_module=analysis_module,
         literature_module=literature_module,
-        debate_rounds=2,
+        debate_rounds=0,
         panelist_llms=[os.getenv("BACKBONE_LLM")]*3,
         include_backbone_llm=True,
         vote_merge=True,
-        timeout=600,
+        timeout=1200,
         sequential=True,
     )
     
