@@ -418,29 +418,46 @@ def _ollama_completion(messages: List[Dict[str, str]], model: str, temperature: 
     # Per-request timeout in seconds (default: 300s = 5 min)
     request_timeout = float(os.getenv("OLLAMA_REQUEST_TIMEOUT", "300"))
 
-    # Budget thinking: inject /think instruction into system prompt for qwen3/qwen3.5
-    # Warn if think budget is high relative to timeout (thinking slows responses significantly)
-    if think_budget and think_budget.lower() not in ("off", "none", "0"):
-        try:
-            budget_tokens = int(think_budget)
-            if budget_tokens > 256 and request_timeout <= 300:
-                print(
-                    f"[chat_completion] Warning: OLLAMA_THINK_BUDGET={budget_tokens} with "
-                    f"OLLAMA_REQUEST_TIMEOUT={request_timeout}s may cause timeouts. "
-                    f"Consider reducing think budget or increasing timeout.",
-                    flush=True,
-                )
-        except ValueError:
-            pass
-        _inject_think_budget(messages, think_budget)
+    # Thinking control: use Ollama native think parameter when possible
+    # OLLAMA_THINK_BUDGET: "off"/"none"/"0" → disable thinking, positive int → budget tokens
+    think_param = None  # None = let model decide (default)
+    if think_budget:
+        if think_budget.lower() in ("off", "none", "0", "false"):
+            think_param = False
+        else:
+            try:
+                budget_tokens = int(think_budget)
+                if budget_tokens > 256 and request_timeout <= 300:
+                    print(
+                        f"[chat_completion] Warning: OLLAMA_THINK_BUDGET={budget_tokens} with "
+                        f"OLLAMA_REQUEST_TIMEOUT={request_timeout}s may cause timeouts. "
+                        f"Consider reducing think budget or increasing timeout.",
+                        flush=True,
+                    )
+                # For specific token budgets, still use prompt injection
+                _inject_think_budget(messages, think_budget)
+            except ValueError:
+                pass
 
     client = OllamaClient(timeout=request_timeout)
 
     for attempt in range(attempts):
         try:
-            response: ChatResponse = client.chat(
-                model=model, messages=messages, options={"seed": seed, "temperature": temperature}
-            )
+            options = {"seed": seed, "temperature": temperature}
+            num_ctx = os.getenv("OLLAMA_CONTEXT_LENGTH", "").strip()
+            if num_ctx:
+                try:
+                    options["num_ctx"] = int(num_ctx)
+                except ValueError:
+                    pass
+            chat_kwargs = {
+                "model": model,
+                "messages": messages,
+                "options": options,
+            }
+            if think_param is not None:
+                chat_kwargs["think"] = think_param
+            response: ChatResponse = client.chat(**chat_kwargs)
 
             content = response.message.content
 

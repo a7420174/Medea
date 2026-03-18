@@ -38,10 +38,16 @@ class TranscriptformerEmbeddingTool:
             pipeline when a requested disease is not found in the store.
             Requires TF_CHECKPOINT_PATH and DISEASE_ATLAS_PATH to be set.
     """
-    def __init__(self, auto_generate: bool = False):
+    def __init__(self, auto_generate: bool | None = None):
         """
         Initializes the tool by identifying available disease-specific embedding stores.
+
+        Args:
+            auto_generate: If True, automatically generate embeddings for missing diseases.
+                Defaults to env var TF_AUTO_GENERATE (TRUE/FALSE), or False if unset.
         """
+        if auto_generate is None:
+            auto_generate = os.environ.get("TF_AUTO_GENERATE", "FALSE").upper() == "TRUE"
         medeadb_path = get_env_with_error(
             "MEDEADB_PATH",
             default="/root/MedeaDB",
@@ -49,19 +55,23 @@ class TranscriptformerEmbeddingTool:
             description="accessing Transcriptformer embeddings"
         )
         self.base_dir = os.path.join(medeadb_path, "transcriptformer_embedding")
-        if not os.path.exists(self.base_dir):
-            error_msg = (
-                f"\n\n❌ Transcriptformer embedding store not found!\n\n"
-                f"Expected location: {self.base_dir}\n\n"
-                f"To fix this issue:\n"
-                f"1. Verify your MEDEADB_PATH is set correctly\n"
-                f"2. Ensure the transcriptformer_embedding/embedding_store directory exists\n"
-                f"3. Download or generate the required embedding data\n\n"
-                f"Current MEDEADB_PATH: {medeadb_path}\n"
-            )
-            raise FileNotFoundError(error_msg)
-
         self.auto_generate = auto_generate
+
+        if not os.path.exists(self.base_dir):
+            if self.auto_generate:
+                os.makedirs(self.base_dir, exist_ok=True)
+                print(f"[TranscriptFormer] Created embedding store directory: {self.base_dir}")
+            else:
+                error_msg = (
+                    f"\n\n❌ Transcriptformer embedding store not found!\n\n"
+                    f"Expected location: {self.base_dir}\n\n"
+                    f"To fix this issue:\n"
+                    f"1. Verify your MEDEADB_PATH is set correctly\n"
+                    f"2. Ensure the transcriptformer_embedding/embedding_store directory exists\n"
+                    f"3. Download or generate the required embedding data\n\n"
+                    f"Current MEDEADB_PATH: {medeadb_path}\n"
+                )
+                raise FileNotFoundError(error_msg)
         self._refresh_available_diseases()
         self.metadata_cache = {}
 
