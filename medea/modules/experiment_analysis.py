@@ -108,68 +108,42 @@ def stream_reader(pipe, output_list, source):
 
 
 class ToolSelector:
-    """Selects relevant tools for code generation based on task instructions."""
+    """Selects relevant tools for code generation based on task instructions.
 
-    def __init__(self, llm_provider: str, tmp: float = 0.4) -> None:
-        """
-        Initialize the ToolSelector.
+    Extracts tool names from 'Tool: <name>' patterns in the instruction text
+    using regex, avoiding LLM calls for this simple extraction task.
+    """
 
-        Args:
-            llm_provider: LLM provider/model name
-            tmp: Temperature setting for the LLM
-        """
+    def __init__(self, llm_provider: str = None, tmp: float = 0.4) -> None:
         self.tool_list = AVALIBLE_TOOL
-        agent_config = LLMConfig({"temperature": tmp})
-        self.pattern = r"```json\n(.*?)```"
-        self.selector = AgentLLM(
-            llm_config=agent_config,
-            llm_name=llm_provider,
-            system_prompt=TOOL_SELECTION_TEMPLATE,
-            input_variables=["instruction", "tool_info"],
-        )
+        self._tool_names = {tool.get("name") for tool in self.tool_list}
+        # Regex to match "Tool: tool_name" lines in proposal text
+        self._tool_pattern = re.compile(r'(?:^|\n)\s*Tool:\s*(\S+)', re.IGNORECASE)
 
     def __call__(self, instruction: str, max_attempts: int = 3) -> List[Dict]:
         """
-        Executes the tool selection process based on the given instruction.
+        Extract tool names from instruction text using regex pattern matching.
 
         Args:
-            instruction (str): The instruction to process.
-            max_attempts (int): Number of attempts to retry LLM execution in case of failure. Default is 3.
+            instruction: The proposal instruction text containing 'Tool: <name>' fields.
+            max_attempts: Unused, kept for API compatibility.
 
         Returns:
-            List[Dict]: A list of JSON objects representing the relevant tools.
+            List of tool info dicts for tools mentioned in the instruction.
         """
-        input_prompt = {"instruction": instruction, "tool_info": _minimal_tool_list(self.tool_list)}
-        for attempt in range(max_attempts):
-            try:
-                # Run the LLM with the input prompt
-                response = self.selector.run(input_prompt)
-                if "```json" in response:
-                    matches = re.findall(self.pattern, response, re.DOTALL)
-                    response = matches[0]
-                if "```python" in response:
-                    pattern = r"^```python\s*(.*?)\s*```$"
-                    matches = re.search(pattern, response, re.DOTALL)
-                    response = matches.group(1).strip() if matches else response.strip()
-                print(f"LLM Response: {response}", flush=True)
+        # Extract tool names from "Tool: xxx" patterns
+        found_names = set(self._tool_pattern.findall(instruction))
+        # Filter to only valid tool names
+        valid_names = found_names & self._tool_names
 
-                # Safely evaluate the LLM's response
-                relevant_tools = ast.literal_eval(response)
-                if isinstance(relevant_tools, list):
-                    break
-                else:
-                    raise ValueError("LLM response is not a valid list.")
-            except Exception as e:
-                print(f"Error on attempt {attempt + 1}: {e}", flush=True)
-                if attempt == max_attempts - 1:
-                    raise RuntimeError(
-                        "Failed to retrieve tools after multiple attempts."
-                    ) from e
+        if not valid_names:
+            print("[ToolSelector] No tools found via regex, using all available tools as fallback", flush=True)
+            return self.tool_list
 
-        # Filter the available tools based on the response
         tool_info_json = [
-            tool for tool in self.tool_list if tool.get("name") in relevant_tools
+            tool for tool in self.tool_list if tool.get("name") in valid_names
         ]
+        print(f"[ToolSelector] Extracted {len(tool_info_json)} tools: {sorted(valid_names)}", flush=True)
         return tool_info_json
 
 
@@ -190,7 +164,7 @@ class CodeGenerator(BaseAction):
 
         # Default temperature is 0.0
         agent_config = LLMConfig({"temperature": tmp})
-        self.tool_selector = ToolSelector(llm_provider=get_utility_llm())
+        self.tool_selector = ToolSelector()
 
         self.CodeGenerator_agent = AgentLLM(
             llm_config=agent_config,
@@ -245,6 +219,9 @@ class CodeGenerator(BaseAction):
 
             try:
                 raw_code_snippet = self.CodeGenerator_agent.run(input_prompt)
+                # Strip <think>...</think> blocks from reasoning models
+                if "</think>" in raw_code_snippet:
+                    raw_code_snippet = raw_code_snippet.split("</think>")[-1].strip()
                 matches = re.findall(self.pattern, raw_code_snippet, re.DOTALL)
                 if not matches:
                     # Fallback 1: try generic ``` fence without language tag
@@ -576,6 +553,9 @@ class CodeDebug(BaseAction):
         )
         print(task_prompt, flush=True)
         raw_code_snippet = self.debugger_agent.run(task_prompt)
+        # Strip <think>...</think> blocks from reasoning models
+        if "</think>" in raw_code_snippet:
+            raw_code_snippet = raw_code_snippet.split("</think>")[-1].strip()
         matches = re.findall(self.pattern, raw_code_snippet, re.DOTALL)
         code_snippet.code_snippet = matches[0]
         code_snippet.status = "unexecuted"
@@ -648,6 +628,9 @@ class AnalysisQualityChecker(BaseAction):
 
         while True:
             output = self.quality_checker_agent.run(input_prompt)
+            # Strip <think>...</think> blocks from reasoning models
+            if "</think>" in output:
+                output = output.split("</think>")[-1].strip()
             print(output, flush=True)
             match = re.match(self.pattern, output)
             if match:

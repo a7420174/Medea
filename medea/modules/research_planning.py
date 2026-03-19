@@ -358,6 +358,10 @@ class ContextVerification(BaseAction):
         try:
             response = self.context_checker.run(proposal_text).strip()
 
+            # Strip <think>...</think> blocks from reasoning models
+            if "</think>" in response:
+                response = response.split("</think>")[-1].strip()
+
             # Clean code blocks
             if "```json" in response:
                 response = response.split("```json")[1].split("```")[0]
@@ -865,6 +869,9 @@ class IntegrityVerification(BaseAction):
 
     def _process_feedback(self, feedback: str, proposal_draft: Proposal):
         """Process LLM feedback and update proposal status."""
+        # Strip <think>...</think> blocks from reasoning models
+        if "</think>" in feedback:
+            feedback = feedback.split("</think>")[-1].strip()
         match = re.match(STATUS_PATTERN, feedback, flags=re.DOTALL)
         if not match:
             print(
