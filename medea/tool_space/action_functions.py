@@ -300,34 +300,56 @@ def get_efo_id(disease_name):
         print(f"Failed to connect to OLS API on fuzzy search. Status code: {response.status_code}")
         return None
 
+def _search_disease_efo_via_opentargets(disease_name):
+    """Fallback: extract EFO/MONDO ID from OpenTargets search API."""
+    try:
+        entities = search_disease_open_target(disease_name)
+        for entity in entities:
+            eid = entity.get("id", "")
+            if "EFO" in eid or "MONDO" in eid:
+                disease_id = eid.replace(":", "_")
+                print(f"[search_disease_efo] Found via OpenTargets fallback: {disease_id}", flush=True)
+                return disease_id
+    except Exception as e:
+        print(f"[search_disease_efo] OpenTargets fallback failed: {e}", flush=True)
+    return None
+
+
 def search_disease_efo(disease_name, attempts=5):
     """
     Searches for the EFO ID of a given disease in the EFO ontology.
-    
+
+    Tries EBI OLS API first, then falls back to OpenTargets search API.
+
     Args:
         disease_name (str): The name of the disease to search for.
-        
+
     Returns:
         str: The EFO or MONDO ID of the disease if found, otherwise None.
     """
-    
-    # Attempt to query up to 5 times to handle potential issues
+    disease_name = disease_name.replace("_", " ")
+
+    # Primary: EBI OLS API
     for attempt in range(attempts):
         try:
-            # Search for disease entities using the Open Targets platform
-            disease_name = disease_name.replace("_", " ")
             disease_efo = get_efo_id(disease_name)
+            if disease_efo is None:
+                break  # API worked but no result — try fallback
             disease_id = disease_efo.replace(":", "_")
-            
-            # Check if the response contains a valid EFO or MONDO ID
             if 'EFO' in disease_id or 'MONDO' in disease_id:
                 return disease_id
+            # Got a result but not EFO/MONDO (e.g. HP:xxxx) — try fallback
+            print(f"[search_disease_efo] OLS returned non-EFO/MONDO ID: {disease_efo}, trying fallback", flush=True)
+            break
         except Exception as e:
-            print(f"[Attempt {attempt + 1}/5] Error: {e}")
-            print("[search_disease_efo]: Bad request format or other issue encountered. Retrying...")
-    
-    # Return None if a valid ID was not found after 5 attempts
-    print(f"[search_disease_efo]: Failed to find EFO or MONDO ID for '{disease_name}' after {attempts} attempts.")
+            print(f"[Attempt {attempt + 1}/{attempts}] OLS API error: {e}", flush=True)
+
+    # Fallback: OpenTargets search API
+    result = _search_disease_efo_via_opentargets(disease_name)
+    if result:
+        return result
+
+    print(f"[search_disease_efo]: Failed to find EFO or MONDO ID for '{disease_name}' after all attempts.", flush=True)
     return None
 
 
