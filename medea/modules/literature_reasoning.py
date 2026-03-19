@@ -49,8 +49,14 @@ _cached_reranker = None
 _cached_reranker_config = None  # (model_name, use_fp16) tuple
 
 
-def get_reranker(model_name="OpenSciLM/OpenScholar_Reranker", use_fp16=False):
-    """Get or create a cached FlagReranker instance. Lazy-imports FlagEmbedding on first use."""
+def get_reranker(model_name="OpenSciLM/OpenScholar_Reranker", use_fp16=False, device=None):
+    """Get or create a cached FlagReranker instance. Lazy-imports FlagEmbedding on first use.
+
+    Args:
+        model_name: Model name or path for the reranker
+        use_fp16: Whether to use FP16 precision (only on CUDA)
+        device: Device to run on ('cpu', 'cuda:0', etc.). If None, uses FlagReranker default.
+    """
     global FlagReranker, _cached_reranker, _cached_reranker_config
 
     # Lazy import — only load FlagEmbedding when actually needed
@@ -60,12 +66,15 @@ def get_reranker(model_name="OpenSciLM/OpenScholar_Reranker", use_fp16=False):
 
         FlagReranker = _FR
 
-    config = (model_name, use_fp16)
+    config = (model_name, use_fp16, device)
     if _cached_reranker is None or _cached_reranker_config != config:
+        kwargs = {"use_fp16": use_fp16}
+        if device is not None:
+            kwargs["device"] = device
         print(
-            f"[Reranker] Initializing model: {model_name} (fp16={use_fp16})", flush=True
+            f"[Reranker] Initializing model: {model_name} (fp16={use_fp16}, device={device})", flush=True
         )
-        _cached_reranker = FlagReranker(model_name, use_fp16=use_fp16)
+        _cached_reranker = FlagReranker(model_name, **kwargs)
         _cached_reranker_config = config
         print(f"[Reranker] Ready (cached for future calls)", flush=True)
     return _cached_reranker
@@ -453,31 +462,40 @@ class OpenScholarReasoning(BaseAction):
             reason_dict = [{"input": user_query, "ctxs": sanitized_papers}]
 
             # Initialize reranker and OpenScholar
-            # Auto-detect device: use CUDA if available, otherwise CPU
-            if "devices" in kwargs:
+            # Device selection: RERANKER_DEVICE env var > kwargs > auto-detect
+            # When vLLM or other models occupy the GPU, set RERANKER_DEVICE=cpu
+            reranker_device_env = os.environ.get("RERANKER_DEVICE", "").strip().lower()
+            if reranker_device_env:
+                device = reranker_device_env
+                use_fp16 = "cuda" in device
+                if self.verbose:
+                    print(f"[OpenScholarReasoning] Using RERANKER_DEVICE={device}", flush=True)
+            elif "devices" in kwargs:
                 device = kwargs["devices"]
-                use_fp16 = (
-                    True  # User specified device, assume they know what they want
-                )
+                use_fp16 = True
             else:
+                # Auto-detect: check if GPU has enough free memory (need ~3GB for reranker)
+                device = "cpu"
+                use_fp16 = False
                 if torch.cuda.is_available():
-                    device = "cuda:0"
-                    use_fp16 = True
-                    if self.verbose:
-                        print(
-                            f"[OpenScholarReasoning] CUDA detected, using GPU",
-                            flush=True,
-                        )
+                    try:
+                        free_mem = torch.cuda.mem_get_info()[0] / (1024**3)  # Free memory in GB
+                        if free_mem > 3.0:
+                            device = "cuda:0"
+                            use_fp16 = True
+                            if self.verbose:
+                                print(f"[OpenScholarReasoning] GPU has {free_mem:.1f}GB free, using GPU", flush=True)
+                        else:
+                            if self.verbose:
+                                print(f"[OpenScholarReasoning] GPU has only {free_mem:.1f}GB free (<3GB needed), falling back to CPU", flush=True)
+                    except Exception:
+                        if self.verbose:
+                            print(f"[OpenScholarReasoning] Could not check GPU memory, using CPU", flush=True)
                 else:
-                    device = "cpu"
-                    use_fp16 = False  # FP16 not supported on CPU
                     if self.verbose:
-                        print(
-                            f"[OpenScholarReasoning] No CUDA detected, using CPU",
-                            flush=True,
-                        )
+                        print(f"[OpenScholarReasoning] No CUDA detected, using CPU", flush=True)
 
-            reranker = get_reranker(self.default_reranker, use_fp16=use_fp16)
+            reranker = get_reranker(self.default_reranker, use_fp16=use_fp16, device=device)
 
             open_scholar = OpenScholar(
                 model=kwargs.get("model"),

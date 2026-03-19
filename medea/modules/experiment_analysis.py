@@ -300,14 +300,71 @@ class CodeGenerator(BaseAction):
 
             i += 1
 
+        # Fallback: if LLM failed to generate code, build code from tool info
+        if "code_snippet" not in locals() or code_snippet == "":
+            code_snippet = self._build_fallback_code(user_query, tool_json)
+            print("[CodeGenerator] Using fallback code generation from tool info.", flush=True)
+
         return CodeSnippet(
             task=user_query,
             instruction=instruction_text,
             tool_info=tool_json_compact,
-            code_snippet=code_snippet
-            if "code_snippet" in locals()
-            else "# Error: Could not generate code",
+            code_snippet=code_snippet,
         )
+
+    @staticmethod
+    def _build_fallback_code(user_query: str, tool_json: list) -> str:
+        """Build a simple Python script from tool info when LLM fails to generate code."""
+        lines = [
+            "# Auto-generated fallback code from proposal tool info",
+            "",
+        ]
+
+        # Generate imports
+        for tool in tool_json:
+            import_path = tool.get("import_path", "")
+            if import_path:
+                lines.append(import_path)
+        lines.append("")
+        lines.append("")
+        lines.append("def main():")
+        lines.append(f'    print("=== Evidence Collection for: {user_query[:100]} ===")')
+        lines.append("")
+
+        # Generate tool calls from code_example or params
+        for tool in tool_json:
+            name = tool.get("name", "unknown")
+            lines.append(f'    # --- {name} ---')
+            ce = tool.get("code_example")
+            if ce and isinstance(ce, dict):
+                code = ce.get("code", "")
+                if code:
+                    for code_line in code.strip().split("\n"):
+                        # Skip import lines (already added above)
+                        if code_line.strip().startswith(("from ", "import ")):
+                            continue
+                        lines.append(f"    {code_line}")
+                    lines.append(f'    print(f"[{name}] Done")')
+                    lines.append("")
+                    continue
+
+            # If no code_example, generate a basic call from params
+            params = tool.get("input_params", [])
+            param_str = ", ".join(
+                f'{p.get("name", "x")}={repr(p.get("description", ""))}'
+                for p in params[:3]
+            )
+            lines.append(f"    result = {name}({param_str})")
+            lines.append(f'    print(f"[{name}] Result: {{result}}")')
+            lines.append("")
+
+        lines.append('    print("=== Evidence collection complete ===")')
+        lines.append("")
+        lines.append("")
+        lines.append("if __name__ == '__main__':")
+        lines.append("    main()")
+
+        return "\n".join(lines)
 
     def check_code_quality(
         self, instruction: str, tool_json: List[Dict], code_snippet: str
