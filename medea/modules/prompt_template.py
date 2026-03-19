@@ -345,70 +345,33 @@ Output (valid Python list only):
 CODE_GENERATION_TEMPLATE = """You are an expert python programmer generating analysis code. Follow PEP8 style.
 No local data is available. Do not use remote URLs, mock data, or mock implementations.
 
-YOUR ROLE: EVIDENCE COLLECTOR, NOT DECISION MAKER.
-Your code should use the available tools to gather, organize, and present evidence.
-Do NOT build rule-based decision workflows or hardcode classification logic.
-The downstream system (panel discussion) will interpret the evidence and make the final judgment.
+ROLE: Evidence collector, NOT decision maker. Gather and present evidence; the downstream panel discussion makes the final judgment.
 
-CRITICAL RESOURCE & EFFICIENCY CONSTRAINTS:
-- NEVER use iterative tool calls in loops:
-- Avoid creating massive function calls in loops
-- Avoid using repetitive verbose output
-- Avoid using excessive API calls
-- No brute-force approaches that call tools for every item in a list
-
-CRITICAL LOGGING GUIDELINES:
-- Use CONCISE, MEANINGFUL logs that provide insights, not data dumps
-- AVOID printing large collections, dictionaries, or gene lists in full
-- Use summary statistics instead: "Found 47 target genes" instead of printing all gene names
-- Log PROGRESS and KEY RESULTS, not intermediate data structures
-- Use informative messages: "Computing similarity scores..." instead of raw data
-- Print FINAL RESULTS clearly with proper formatting
-- Suppress verbose library outputs when possible
-- When tools produce verbose output, capture results silently and summarize key findings
-
-What your code SHOULD do:
-- Call tools to retrieve relevant data (annotations, interactions, literature, etc.)
-- Clearly print what each tool found or did NOT find
-- Summarize the evidence: what was found, what was not found, and confidence levels from tools
-- Present raw tool outputs and summaries — let the evidence speak for itself
-
-What your code should NOT do:
-- Build keyword-matching classifiers or rule-based decision trees on tool outputs
-- Hardcode scoring functions, confidence combiners, or classification workflows
-- Draw a final conclusion or make a prediction — that is not your job
-- Infer conclusions from absence of evidence or from general knowledge
-
-RESOURCE & EFFICIENCY CONSTRAINTS:
+CONSTRAINTS:
 - No iterative tool calls in loops; no brute-force approaches
 - Pre-filter before expensive calls; analyze only top 1-2 candidates
-- Batch tool calls when possible; consolidate related API calls
-- Use expensive tools (e.g., scientific_reasoning_agent) at most once, as final evidence gathering
+- Batch tool calls when possible; use scientific_reasoning_agent at most once
+- No mock data, no hardcoded classifiers or scoring functions
 
-LOGGING GUIDELINES:
-- Concise, meaningful logs — summarize counts and key findings, not raw data
-- Print FINAL EVIDENCE SUMMARY clearly with what was found and what was not
+LOGGING:
+- Concise logs: summary counts and key findings, not data dumps
+- Check if tools returned "no results" BEFORE extracting findings
+- Print FINAL EVIDENCE SUMMARY clearly
 
-INTERPRETING TOOL OUTPUTS:
-- Always check if a tool returned "no results" or "insufficient data" BEFORE extracting findings
-- Tool outputs may echo query terms even in negative responses — check the overall conclusion first
-- When tools return no supporting data, report that clearly rather than guessing
+CODE STYLE:
+- One main() function with linear tool calls, no class hierarchies
+- No verbose docstrings, type annotations, or elaborate helpers
 
-CODE LENGTH LIMIT:
-- Do NOT write verbose docstrings, type annotations, or elaborate helper functions.
-- Call tools directly, print what they return, summarize. That's it.
-- One main() function with linear tool calls — no class hierarchies or complex abstractions.
-
-User Query: 
+User Query:
 {user_query}
 ====
-Proposed instruction: 
+Proposed instruction:
 {instruction}
 ====
 Additional Tool Info:
 {tools}
 
-Output the code snippet wrapped in a ```python code fence. No explanations or additional text outside the code fence.
+Output the code snippet wrapped in a ```python code fence.
 """
 
 

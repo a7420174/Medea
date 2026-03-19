@@ -56,6 +56,37 @@ def _load_tool_info():
 AVALIBLE_TOOL = _load_tool_info()
 
 
+def _minimal_tool_list(tools: list) -> str:
+    """Create a minimal string representation of tools (name + description only).
+
+    Used for tool selection prompts where only tool identity matters,
+    not parameter details. Saves ~70% tokens vs compact format.
+    """
+    minimal = [{"name": t.get("name", ""), "description": t.get("description", "")} for t in tools]
+    return json.dumps(minimal, separators=(",", ":"))
+
+
+def _compact_tool_list(tools: list) -> str:
+    """Create a compact string representation of tools for LLM prompts.
+
+    Strips code_example, import_path, tensor_size, and returns fields to reduce
+    token count, keeping only what the LLM needs for quality evaluation and
+    code generation.
+    """
+    compact = []
+    for tool in tools:
+        entry = {
+            "name": tool.get("name", ""),
+            "description": tool.get("description", ""),
+            "input_params": tool.get("input_params", []),
+        }
+        rt = tool.get("return_type")
+        if rt:
+            entry["return_type"] = rt
+        compact.append(entry)
+    return json.dumps(compact, separators=(",", ":"))
+
+
 # Constants
 JSON_CODE_BLOCK_PATTERN = r"```json\n(.*?)```"
 PYTHON_CODE_BLOCK_PATTERN = r"^```python\s*(.*?)\s*```$"
@@ -116,7 +147,7 @@ class ProposalToolSelector:
         Returns:
             List of JSON objects representing the relevant tools.
         """
-        input_prompt = {"user_query": user_query, "tool_info": self.tool_list}
+        input_prompt = {"user_query": user_query, "tool_info": _minimal_tool_list(self.tool_list)}
         relevant_tools = []
 
         for attempt in range(max_attempts):
@@ -194,12 +225,12 @@ class ResearchPlanDraft(BaseAction):
 
         input_prompt = {
             "user_query": user_query,
-            "tool_list": selected_tools,
+            "tool_list": _compact_tool_list(selected_tools),
             "proposal_feedback": proposal_feedback,
         }
 
         proposal_draft_result = self.proposal_draft.run(input_prompt)
-        return Proposal(user_query=user_query, proposal=proposal_draft_result)
+        return Proposal(user_query=user_query, proposal=proposal_draft_result, tool_info=selected_tools)
 
     def _prepare_feedback(self, proposal_draft: Proposal) -> str:
         """Prepare feedback content from previous proposal iterations."""
@@ -735,16 +766,21 @@ class IntegrityVerification(BaseAction):
         )
         agent_config = LLMConfig({"temperature": tmp})
 
-        tool_list_json = json.dumps(AVALIBLE_TOOL, indent=2)
-        tool_list_escaped = tool_list_json.replace("{", "{{").replace("}", "}}")
-
-        self.llm_evaluater = AgentLLM(
-            llm_config=agent_config,
-            llm_name=llm_provider,
-            system_prompt=PROPOSAL_QUALITY_TEMPLATE.format(tool_list=tool_list_escaped),
-        )
+        self._llm_config = agent_config
+        self._llm_provider = llm_provider
         self.iterations = 0
         self.max_iter = max_iter
+
+    def _get_evaluator(self, proposal_draft: Proposal) -> AgentLLM:
+        """Build evaluator LLM with tool list scoped to the proposal's selected tools."""
+        selected_tools = proposal_draft.get_tool_info() if hasattr(proposal_draft, 'get_tool_info') and proposal_draft.get_tool_info() else AVALIBLE_TOOL
+        tool_list_json = _compact_tool_list(selected_tools)
+        tool_list_escaped = tool_list_json.replace("{", "{{").replace("}", "}}")
+        return AgentLLM(
+            llm_config=self._llm_config,
+            llm_name=self._llm_provider,
+            system_prompt=PROPOSAL_QUALITY_TEMPLATE.format(tool_list=tool_list_escaped),
+        )
 
     def __call__(self, proposal_draft: Proposal) -> Proposal:
         """
@@ -772,6 +808,8 @@ class IntegrityVerification(BaseAction):
         )
         print(f"[User query]: {proposal_draft.get_query()}", flush=True)
 
+        self.llm_evaluater = self._get_evaluator(proposal_draft)
+
         prompt = self._build_evaluation_prompt(
             proposal_draft, previous_feedback, current_feedback
         )
@@ -786,15 +824,10 @@ class IntegrityVerification(BaseAction):
         return (
             f"User Query:\n{proposal_draft.get_query()}\n\n"
             f"Proposal Draft:\n{proposal_draft.get_proposal()}\n\n"
-            f"━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n"
-            f"CONTEXT VERIFICATION FEEDBACK (Alternative contexts may have been suggested):\n"
-            f"{current_feedback}\n\n"
-            f"Previous Iteration Feedback:\n{previous_feedback}\n\n"
-            f"━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n"
-            f"IMPORTANT: If ContextVerification suggested alternative entities (cell types, genes, etc.),\n"
-            f"these are VALIDATED and ACCEPTABLE to use. Do NOT fail the proposal just because\n"
-            f"it uses alternatives - instead, verify that the proposal clearly documents why\n"
-            f"alternatives were chosen and that all tool parameters are correct for the alternatives used."
+            f"Context Verification Feedback:\n{current_feedback}\n\n"
+            f"Previous Feedback:\n{previous_feedback}\n\n"
+            f"NOTE: If ContextVerification suggested alternative entities, "
+            f"these are VALIDATED and ACCEPTABLE. Verify documentation and parameter correctness."
         )
 
     def _evaluate_with_retries(

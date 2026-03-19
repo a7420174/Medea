@@ -51,10 +51,56 @@ GROQ_API_KEY=your-groq-api-key-here
 
 # OR Ollama (local)
 OLLAMA_BASE_URL=http://localhost:11434
+# See "OPTIONAL: Ollama Settings" section below for detailed configuration
+
+# OR vLLM / OpenAI-compatible server (local)
+# OPENAI_API_BASE=http://localhost:8000/v1
+# OPENAI_API_KEY=dummy
+# See "OPTIONAL: vLLM / OpenAI-compatible Backend" section below
 
 # OR NVIDIA DeepSeek R1
 NVIDIA_DEEPSEEK_ENDPOINT=https://your-nvidia-endpoint.com/v1
 NVIDIA_DEEPSEEK_API_KEY=your-nvidia-deepseek-api-key-here
+
+# ============================================================================
+# OPTIONAL: Ollama Settings
+# ============================================================================
+# Per-request timeout in seconds (timeout errors are NOT retried)
+# OLLAMA_REQUEST_TIMEOUT=600
+
+# Context window size per request (overrides server/Modelfile defaults)
+# Recommended: 16384 for tool-heavy agents
+# OLLAMA_CONTEXT_LENGTH=16384
+
+# Thinking token budget for reasoning models (qwen3, qwen3.5, deepseek-r1)
+# Values: off/none/0/false (disable), positive integer e.g. 512 (token budget)
+# Non-thinking models (qwen3:8b) ignore this setting
+# OLLAMA_THINK_BUDGET=off
+
+# Print <think> blocks from reasoning models for debugging
+# Values: 1, true, yes
+# MEDEA_DEBUG_THINK=FALSE
+
+# ============================================================================
+# OPTIONAL: vLLM / OpenAI-compatible Backend
+# ============================================================================
+# vLLM serves an OpenAI-compatible API — no code changes needed.
+#
+# Start vLLM:
+#   vllm serve Qwen/Qwen3.5-14B-AWQ --max-model-len 16384 --gpu-memory-utilization 0.92 --enforce-eager
+#
+# Then set:
+#   LLM_PROVIDER_NAME=OpenAI
+#   OPENAI_API_BASE=http://localhost:8000/v1
+#   OPENAI_API_KEY=dummy
+#   BACKBONE_LLM=Qwen/Qwen3.5-14B-AWQ
+#
+# GPU memory estimates (AWQ 4-bit):
+#   Qwen3.5-7B-AWQ  + 16K ctx → ~8GB  (T4 safe)
+#   Qwen3.5-14B-AWQ + 16K ctx → ~14GB (T4 tight, recommended)
+#   Qwen3.5-32B-AWQ + 16K ctx → ~24GB (A100 40GB)
+#
+# Also works with Cerebras and Groq via built-in provider support.
 
 # ============================================================================
 # OPTIONAL: Additional LLM Settings

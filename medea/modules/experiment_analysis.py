@@ -57,6 +57,38 @@ def _load_tool_info():
 AVALIBLE_TOOL = _load_tool_info()
 
 
+def _minimal_tool_list(tools: list) -> str:
+    """Create a minimal string representation of tools (name + description only).
+
+    Used for tool selection prompts where only tool identity matters.
+    """
+    minimal = [{"name": t.get("name", ""), "description": t.get("description", "")} for t in tools]
+    return json.dumps(minimal, separators=(",", ":"))
+
+
+def _compact_tool_list(tools: list) -> str:
+    """Create a compact string representation of tools for LLM prompts.
+
+    Strips code_example, import_path, tensor_size, and returns fields to reduce
+    token count, keeping only what the LLM needs for code generation.
+    """
+    compact = []
+    for tool in tools:
+        entry = {
+            "name": tool.get("name", ""),
+            "description": tool.get("description", ""),
+            "input_params": tool.get("input_params", []),
+        }
+        rt = tool.get("return_type")
+        if rt:
+            entry["return_type"] = rt
+        ce = tool.get("code_example")
+        if ce:
+            entry["code_example"] = ce.get("code", "")
+        compact.append(entry)
+    return json.dumps(compact, separators=(",", ":"))
+
+
 def stream_reader(pipe, output_list, source):
     """
     Read lines from a pipe and append them to a list.
@@ -107,7 +139,7 @@ class ToolSelector:
         Returns:
             List[Dict]: A list of JSON objects representing the relevant tools.
         """
-        input_prompt = {"instruction": instruction, "tool_info": self.tool_list}
+        input_prompt = {"instruction": instruction, "tool_info": _minimal_tool_list(self.tool_list)}
         for attempt in range(max_attempts):
             try:
                 # Run the LLM with the input prompt
@@ -204,10 +236,11 @@ class CodeGenerator(BaseAction):
 
         while not quality_flag and i < attempt:
             tool_json = self.tool_selector(instruction=instruction_text)
+            tool_json_compact = _compact_tool_list(tool_json)
             input_prompt = {
                 "instruction": instruction_text + "\n" + feedback,
                 "user_query": user_query,
-                "tools": tool_json,
+                "tools": tool_json_compact,
             }
 
             try:
@@ -272,14 +305,14 @@ class CodeGenerator(BaseAction):
                 print(code_snippet, flush=True)
 
                 quality_flag, feedback = self.check_code_quality(
-                    instruction_text, tool_json, code_snippet
+                    instruction_text, tool_json_compact, code_snippet
                 )
 
                 if quality_flag:
                     return CodeSnippet(
                         task=user_query,
                         instruction=instruction_text,  # Store instruction text
-                        tool_info=tool_json,
+                        tool_info=tool_json_compact,
                         code_snippet=code_snippet,
                     )
 
@@ -292,7 +325,7 @@ class CodeGenerator(BaseAction):
         return CodeSnippet(
             task=user_query,
             instruction=instruction_text,
-            tool_info=tool_json,
+            tool_info=tool_json_compact,
             code_snippet=code_snippet
             if "code_snippet" in locals()
             else "# Error: Could not generate code",

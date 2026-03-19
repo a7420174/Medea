@@ -38,13 +38,18 @@ class Tool:
 
 
 class Proposal:
-    def __init__(self, user_query=None, proposal=None):
+    def __init__(self, user_query=None, proposal=None, tool_info=None):
         self.user_query = user_query
         self.proposal = proposal
+        self._tool_info = tool_info
         self.feedback = None
         self.id_mapping_feedback = [None]
         self.status = "Failed"
         self.proposal_id = str(uuid.uuid4().int)[:4]
+
+    def get_tool_info(self):
+        """Return the selected tool info list for this proposal."""
+        return self._tool_info
 
     def __str__(self):
         return f"<Proposal:{self.proposal_id}>"
