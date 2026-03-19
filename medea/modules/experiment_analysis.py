@@ -76,6 +76,7 @@ def _compact_tool_list(tools: list) -> str:
     for tool in tools:
         entry = {
             "name": tool.get("name", ""),
+            "import_path": tool.get("import_path", ""),
             "description": tool.get("description", ""),
             "input_params": tool.get("input_params", []),
         }

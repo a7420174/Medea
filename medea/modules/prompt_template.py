@@ -342,27 +342,22 @@ Output (valid Python list only):
 """
 
 
-CODE_GENERATION_TEMPLATE = """You MUST generate Python code. Do NOT explain or reason — output ONLY a ```python code block.
+CODE_GENERATION_TEMPLATE = """Generate a Python script that collects evidence by calling the tools described below.
+Do NOT make decisions — just call tools, print results, and summarize findings.
 
-Your code collects evidence using the tools below. It does NOT make decisions — just calls tools, prints results, and summarizes findings. The downstream panel discussion interprets the evidence.
+User Query: {user_query}
 
-RULES:
-- One main() function, call it at the end
-- Import tools using the exact import paths from Tool Info below
-- No mock data, no loops over tool calls, no hardcoded classifiers
-- Print concise summaries, not raw data dumps
-- Check if tools returned empty/error results before extracting findings
+Instruction: {instruction}
 
-User Query:
-{user_query}
-====
-Proposed instruction:
-{instruction}
-====
-Tool Info (use these exact imports and parameters):
-{tools}
+Tool Info: {tools}
 
-IMPORTANT: Output ONLY a ```python code block. No explanations before or after.
+Output ONLY a ```python code block. Follow this structure:
+
+```python
+# Step 1: import tools (use exact import paths from Tool Info above)
+# Step 2: define main() that calls each tool, prints key results
+# Step 3: call main()
+```
 """
 
 
