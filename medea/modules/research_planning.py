@@ -230,6 +230,10 @@ class ResearchPlanDraft(BaseAction):
         }
 
         proposal_draft_result = self.proposal_draft.run(input_prompt)
+        # Strip <think>...</think> blocks from reasoning models to avoid
+        # wasting tokens in every downstream LLM call (CodeGenerator, Debugger, etc.)
+        if "</think>" in proposal_draft_result:
+            proposal_draft_result = proposal_draft_result.split("</think>")[-1].strip()
         return Proposal(user_query=user_query, proposal=proposal_draft_result, tool_info=selected_tools)
 
     def _prepare_feedback(self, proposal_draft: Proposal) -> str:
