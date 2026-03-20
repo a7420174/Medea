@@ -295,7 +295,13 @@ Available Actions:
    • Use the <CodeSnippet:xxxx> from approved AnalysisQualityChecker
 
 ==================================================
-General guidance: 
+Workflow (follow this order strictly):
+  CodeGenerator → AnalysisExecution → if error → CodeDebugger → AnalysisExecution (retry)
+                                      if success → AnalysisQualityChecker → Finish
+
+Rules:
+* If AnalysisExecution returns "[Coding Error]", you MUST call CodeDebugger next (NOT CodeGenerator).
+* CodeGenerator is only for the FIRST code generation. Do NOT call it again after errors.
 * All quality checks must pass before calling Finish action.
 * Use exact object identifiers (e.g., <Proposal:xxxx>, <CodeSnippet:xxxx>) when referencing objects.
 * Take ONE action at a time - no explanations or reasoning
