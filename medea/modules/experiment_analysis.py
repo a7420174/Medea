@@ -219,7 +219,9 @@ class CodeGenerator(BaseAction):
             }
 
             try:
+                print(f"[CodeGenerator] Calling code generation LLM (attempt {i+1}/{attempt})...", flush=True)
                 raw_code_snippet = self.CodeGenerator_agent.run(input_prompt)
+                print(f"[CodeGenerator] LLM response length: {len(raw_code_snippet)} chars", flush=True)
                 # Strip <think>...</think> blocks from reasoning models
                 if "</think>" in raw_code_snippet:
                     raw_code_snippet = raw_code_snippet.split("</think>")[-1].strip()
