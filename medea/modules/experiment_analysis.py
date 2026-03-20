@@ -85,7 +85,10 @@ def _compact_tool_list(tools: list) -> str:
             entry["return_type"] = rt
         ce = tool.get("code_example")
         if ce:
-            entry["code_example"] = ce.get("code", "")
+            if isinstance(ce, list):
+                entry["code_example"] = ce[0].get("code", "") if ce else ""
+            elif isinstance(ce, dict):
+                entry["code_example"] = ce.get("code", "")
         compact.append(entry)
     return json.dumps(compact, separators=(",", ":"))
 
