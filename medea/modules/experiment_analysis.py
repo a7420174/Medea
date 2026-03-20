@@ -300,9 +300,16 @@ class CodeGenerator(BaseAction):
 
             i += 1
 
-        # Fallback: if LLM failed to generate code, build code from tool info
-        if "code_snippet" not in locals() or code_snippet == "":
-            code_snippet = self._build_fallback_code(user_query, tool_json)
+        # Fallback: if LLM failed to generate valid Python, build code from tool info
+        needs_fallback = "code_snippet" not in locals() or code_snippet == ""
+        if not needs_fallback:
+            try:
+                compile(code_snippet, "<code_gen>", "exec")
+            except SyntaxError:
+                print("[CodeGenerator] Generated code has syntax errors, using fallback.", flush=True)
+                needs_fallback = True
+        if needs_fallback:
+            code_snippet = self._build_fallback_code(user_query, tool_json, instruction_text)
             print("[CodeGenerator] Using fallback code generation from tool info.", flush=True)
 
         return CodeSnippet(
@@ -313,52 +320,145 @@ class CodeGenerator(BaseAction):
         )
 
     @staticmethod
-    def _build_fallback_code(user_query: str, tool_json: list) -> str:
-        """Build a simple Python script from tool info when LLM fails to generate code."""
-        lines = [
-            "# Auto-generated fallback code from proposal tool info",
-            "",
-        ]
+    def _build_fallback_code(user_query: str, tool_json: list, instruction_text: str = "") -> str:
+        """Build a Python script from tool info when LLM fails to generate code.
 
-        # Generate imports
-        for tool in tool_json:
-            import_path = tool.get("import_path", "")
-            if import_path:
-                lines.append(import_path)
-        lines.append("")
-        lines.append("")
-        lines.append("def main():")
-        lines.append(f'    print("=== Evidence Collection for: {user_query[:100]} ===")')
-        lines.append("")
+        Generically maps extracted entities (disease, genes, tissue, cell_type)
+        to each tool's input_params based on parameter names — no tool-specific
+        hard-coding so it works with any combination of tools.
+        """
+        import re as _re
 
-        # Generate tool calls from code_example or params
-        for tool in tool_json:
-            name = tool.get("name", "unknown")
-            lines.append(f'    # --- {name} ---')
-            ce = tool.get("code_example")
-            if ce and isinstance(ce, dict):
-                code = ce.get("code", "")
-                if code:
-                    for code_line in code.strip().split("\n"):
-                        # Skip import lines (already added above)
-                        if code_line.strip().startswith(("from ", "import ")):
-                            continue
-                        lines.append(f"    {code_line}")
-                    lines.append(f'    print(f"[{name}] Done")')
-                    lines.append("")
-                    continue
+        # --- Extract entities from instruction + query ---
+        combined = f"{user_query}\n{instruction_text}"
 
-            # If no code_example, generate a basic call from params
-            params = tool.get("input_params", [])
-            param_str = ", ".join(
-                f'{p.get("name", "x")}={repr(p.get("description", ""))}'
-                for p in params[:3]
+        # Disease: JSON param value > tool input_params default > None
+        disease = None
+        m = _re.search(r'"disease_name":\s*"([^"]+)"', combined)
+        if m:
+            disease = m.group(1).strip()
+        if not disease:
+            # Check tool_json for disease_name param with a default value
+            for tool in tool_json:
+                for p in (tool.get("input_params") or []):
+                    if isinstance(p, dict) and p.get("name") == "disease_name":
+                        default = p.get("default")
+                        if default and isinstance(default, str):
+                            disease = default
+
+        # Genes: JSON array > comma/and-separated uppercase symbols in query
+        genes = []
+        m = _re.search(r'"genes?":\s*\[([^\]]+)\]', combined)
+        if m:
+            genes = _re.findall(r'"([A-Z][A-Z0-9]+)"', m.group(1))
+        if not genes:
+            # Match sequences of 2+ uppercase gene symbols separated by commas/and/or
+            # Handles: "CD79A, MS4A1, and FCGR3A" / "BRCA1, TP53, and PTEN" / "CNGA1—HDAC2"
+            _gene_sym = r'[A-Z][A-Z0-9]{1,9}'
+            _sep = r'[\s,;—–\-]+(?:and\s+|or\s+)?'
+            m = _re.search(
+                rf'({_gene_sym}(?:{_sep}{_gene_sym}){{1,}})',
+                user_query,  # only from user query to avoid proposal boilerplate
             )
-            lines.append(f"    result = {name}({param_str})")
-            lines.append(f'    print(f"[{name}] Result: {{result}}")')
+            if m:
+                _exclude_genes = {"THE", "AND", "FOR", "WITH", "FROM", "WHICH", "NOT",
+                                  "HPA", "API", "RNA", "DNA", "PPI", "LLM", "FDA", "GWAS"}
+                genes = [g for g in _re.findall(rf'{_gene_sym}', m.group(1))
+                         if g not in _exclude_genes]
+
+        # Tissue / cell_type
+        tissue = None
+        m = _re.search(r'"tissue":\s*"([^"]+)"', combined)
+        if m:
+            tissue = m.group(1)
+        cell_type = None
+        m = _re.search(r'"cell_type":\s*"([^"]+)"', combined)
+        if m:
+            cell_type = m.group(1)
+
+        # Entity bank for param matching
+        entities = {
+            "disease": disease,
+            "genes": genes,
+            "tissue": tissue,
+            "cell_type": cell_type,
+        }
+
+        # --- Build code ---
+        lines = ["# Auto-generated evidence collection code", ""]
+
+        # Imports
+        for tool in tool_json:
+            ip = tool.get("import_path", "")
+            if ip:
+                lines.append(ip)
+
+        lines.extend(["", "", "def main():"])
+        lines.append(f'    print("=== Evidence Collection ===")')
+        # Emit entity variables
+        if genes:
+            lines.append(f'    genes = {genes}')
+        if disease:
+            lines.append(f'    disease = "{disease}"')
+        if tissue:
+            lines.append(f'    tissue = "{tissue}"')
+        if cell_type:
+            lines.append(f'    cell_type = "{cell_type}"')
+        lines.append("")
+
+        # Generate a call for each tool using param-name matching
+        for step_i, tool in enumerate(tool_json, 1):
+            name = tool.get("name", "unknown")
+            params = tool.get("input_params", [])
+            lines.append(f'    # Step {step_i}: {name}')
+            lines.append(f'    print(f"\\n--- Step {step_i}: {name} ---")')
+            lines.append(f'    try:')
+
+            # Build argument list by matching param names to entities
+            args = []
+            has_gene_name = any(p.get("name") == "gene_name" for p in params)
+            iterate_genes = has_gene_name and genes and len(genes) > 1
+
+            for p in params:
+                pname = p.get("name", "")
+                ptype = p.get("type", "str").lower()
+
+                if "disease" in pname and disease:
+                    args.append(f'{pname}=disease')
+                elif pname in ("genes", "gene_list") and genes:
+                    args.append(f'{pname}=genes')
+                elif pname == "gene_name" and genes:
+                    args.append(f'{pname}=gene')  # loop variable
+                elif pname in ("gene", "gene_a") and genes:
+                    args.append(f'{pname}=genes[0]')
+                elif pname == "gene_b" and len(genes) > 1:
+                    args.append(f'{pname}=genes[1]')
+                elif "tissue" in pname and tissue:
+                    args.append(f'{pname}=tissue')
+                elif "cell" in pname and "type" in pname and cell_type:
+                    args.append(f'{pname}=cell_type')
+                elif "max" in pname:
+                    args.append(f'{pname}=10')
+                elif "bool" in ptype:
+                    args.append(f'{pname}=True')
+                # skip params we can't fill
+
+            arg_str = ", ".join(args)
+
+            if iterate_genes:
+                # Tool takes single gene_name → loop over genes
+                lines.append(f'        for gene in genes:')
+                lines.append(f'            result = {name}({arg_str})')
+                lines.append(f'            print(f"  [{{gene}}] {{str(result)[:200]}}")')
+            else:
+                lines.append(f'        result = {name}({arg_str})')
+                lines.append(f'        print(f"  Result: {{str(result)[:300]}}")')
+
+            lines.append(f'    except Exception as e:')
+            lines.append(f'        print(f"  [{name}] Failed: {{e}}")')
             lines.append("")
 
-        lines.append('    print("=== Evidence collection complete ===")')
+        lines.append(f'    print("\\n=== Evidence collection complete ===")')
         lines.append("")
         lines.append("")
         lines.append("if __name__ == '__main__':")

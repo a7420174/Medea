@@ -48,7 +48,24 @@ def rerank_paragraphs_bge(query, paragraphs, reranker, norm_cite=False, start_in
         ]
 
     # Compute scores using the reranker; each input is a pair [query, paragraph_text]
-    scores = reranker.compute_score([[query, text] for text in paragraph_texts], batch_size=batch_size)
+    # Determine device: if reranker was loaded on CPU, pass device="cpu" explicitly
+    # to prevent FlagEmbedding from moving the model to GPU (causes OOM with vLLM)
+    _reranker_device = None
+    try:
+        if hasattr(reranker, 'target_devices') and reranker.target_devices:
+            _first_dev = str(reranker.target_devices[0])
+            if _first_dev == "cpu":
+                _reranker_device = "cpu"
+        elif hasattr(reranker, 'model'):
+            _param = next(reranker.model.parameters(), None)
+            if _param is not None and str(_param.device) == "cpu":
+                _reranker_device = "cpu"
+    except Exception:
+        pass
+    score_kwargs = {"batch_size": batch_size}
+    if _reranker_device:
+        score_kwargs["device"] = _reranker_device
+    scores = reranker.compute_score([[query, text] for text in paragraph_texts], **score_kwargs)
 
     # Wrap a single float score in a dictionary; otherwise, enumerate the scores
     if isinstance(scores, float):

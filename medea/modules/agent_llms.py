@@ -356,7 +356,8 @@ def _validate_special_arguments(arguments: Dict) -> bool:
     validators = {
         "proposal_draft": r"^<Proposal:\d+>$",
         "code_snippet": r"^<CodeSnippet:\d+>$",
-        "instruction": r"^<Proposal:\d+>$",
+        # "instruction" is NOT validated here — it may be a <Proposal:xxxx>
+        # reference OR plain text. Resolution happens in _find_proposal().
     }
 
     for arg_name, pattern in validators.items():

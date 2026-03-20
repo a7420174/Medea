@@ -70,7 +70,9 @@ def get_reranker(model_name="OpenSciLM/OpenScholar_Reranker", use_fp16=False, de
     if _cached_reranker is None or _cached_reranker_config != config:
         kwargs = {"use_fp16": use_fp16}
         if device is not None:
-            kwargs["device"] = device
+            # 'devices' sets target_devices list (used by compute_score_single_gpu)
+            # 'device' alone does NOT prevent GPU migration during inference
+            kwargs["devices"] = [device]
         print(
             f"[Reranker] Initializing model: {model_name} (fp16={use_fp16}, device={device})", flush=True
         )
