@@ -209,9 +209,15 @@ class CodeGenerator(BaseAction):
         print(f"User query:\n{user_query}", flush=True)
         print(f"Instruction text:\n{instruction_text}", flush=True)
 
+        print(f"[CodeGenerator] Entering code generation loop (attempt={attempt}, quality_flag={quality_flag}, i={i})", flush=True)
         while not quality_flag and i < attempt:
-            tool_json = self.tool_selector(instruction=instruction_text)
-            tool_json_compact = _compact_tool_list(tool_json)
+            try:
+                tool_json = self.tool_selector(instruction=instruction_text)
+                tool_json_compact = _compact_tool_list(tool_json)
+            except Exception as e:
+                print(f"[CodeGenerator] Tool selection/compact failed: {e}", flush=True)
+                i += 1
+                continue
             input_prompt = {
                 "instruction": instruction_text + "\n" + feedback,
                 "user_query": user_query,
