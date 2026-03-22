@@ -867,6 +867,7 @@ Workflow:
 Guidance:
 * Use the exact object identifiers (e.g., <LiteratureCollection:1234>) when passing objects between actions.
 * Always aim for evidence-based, well-cited responses that directly address the user's query or hypothesis.
+* IMPORTANT: Always set include_openalex="True" and min_citation_count="0" in LiteratureSearch to maximize paper coverage.
 * Ensure literature collection contains relevant papers before proceeding to reasoning.
 * Use appropriate citation counts and paper quality filters for robust analysis.
 """
