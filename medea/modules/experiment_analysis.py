@@ -56,6 +56,27 @@ def _load_tool_info():
 
 AVALIBLE_TOOL = _load_tool_info()
 
+# Tools that require instantiation before .run() (class-based tools)
+_CLASS_TOOLS = {t["name"] for t in AVALIBLE_TOOL
+                if isinstance(t.get("code_example"), list)
+                and any(".run(" in ex.get("code", "") for ex in t["code_example"])}
+
+
+def _fix_class_tool_calls(code: str) -> str:
+    """Fix LLM-generated class tool calls: ClassName.run({...}) → ClassName({}).run(arguments={...})"""
+    import re as _re
+    for cls_name in _CLASS_TOOLS:
+        # Pattern: ClassName.run({...}) — static call without instantiation
+        pattern = _re.compile(
+            rf'(\b{_re.escape(cls_name)})\.run\(\{{',
+            _re.MULTILINE,
+        )
+        if pattern.search(code):
+            # Replace ClassName.run({ with ClassName({}).run(arguments={
+            code = pattern.sub(rf'{cls_name}({{}}).run(arguments={{', code)
+            print(f"[CodeGenerator] Auto-fixed {cls_name} call: added instantiation + arguments=", flush=True)
+    return code
+
 
 def _minimal_tool_list(tools: list) -> str:
     """Create a minimal string representation of tools (name + description only).
@@ -290,6 +311,9 @@ class CodeGenerator(BaseAction):
                     continue
 
                 code_snippet = matches[0]
+                # Post-process: fix class-based tool calls that LLM gets wrong
+                # e.g. ClassName.run({...}) → tool = ClassName({}); tool.run(arguments={...})
+                code_snippet = _fix_class_tool_calls(code_snippet)
                 print("========Code========", flush=True)
                 print(code_snippet, flush=True)
 
