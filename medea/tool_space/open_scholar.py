@@ -63,8 +63,19 @@ def rerank_paragraphs_bge(query, paragraphs, reranker, norm_cite=False, start_in
     except Exception:
         pass
     score_kwargs = {"batch_size": batch_size}
-    if _reranker_device:
-        score_kwargs["device"] = _reranker_device
+    # Force model to stay on CPU to prevent FlagEmbedding from moving it to GPU (OOM with vLLM)
+    if _reranker_device == "cpu" and hasattr(reranker, 'model'):
+        reranker.model = reranker.model.cpu()
+        # Monkey-patch to prevent .to(cuda) inside compute_score_single_gpu
+        _original_to = reranker.model.to
+        def _cpu_only_to(*args, **kwargs):
+            # Intercept .to(device) calls — keep on CPU
+            if args and str(args[0]) != "cpu":
+                return reranker.model
+            if 'device' in kwargs and str(kwargs['device']) != "cpu":
+                return reranker.model
+            return _original_to(*args, **kwargs)
+        reranker.model.to = _cpu_only_to
     scores = reranker.compute_score([[query, text] for text in paragraph_texts], **score_kwargs)
 
     # Wrap a single float score in a dictionary; otherwise, enumerate the scores

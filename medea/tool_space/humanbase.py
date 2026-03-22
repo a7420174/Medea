@@ -1,3 +1,4 @@
+import os
 import requests
 import time
 import logging
@@ -113,8 +114,13 @@ class BaseHumanBaseTool(ABC):
                 'retmode': 'xml',
                 'retmax': '1'
             }
-            
+            # Use NCBI API key if available (raises rate limit from 3/s to 10/s)
+            ncbi_key = os.environ.get('NCBI_API_KEY')
+            if ncbi_key:
+                params['api_key'] = ncbi_key
+
             try:
+                time.sleep(0.35)  # Respect NCBI rate limit (3/s without key)
                 response = requests.get(url, params=params)
                 response.raise_for_status()
                 xml_data = response.text
