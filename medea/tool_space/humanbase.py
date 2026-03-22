@@ -288,7 +288,8 @@ class BaseHumanBaseTool(ABC):
         network_params = {
             'datatypes': interaction_type,
             'entrez': entrez_ids,  # Pass as list, requests will handle the formatting
-            'node_size': max_interactions + 5  # Get a few extra for filtering
+            'node_size': max_interactions + 5,  # Get a few extra for filtering
+            'giant_version': 'v1'  # Required by API
         }
         
         network_data = self._make_request(network_url, network_params)
@@ -330,7 +331,8 @@ class BaseHumanBaseTool(ABC):
             evidence_params = {
                 'limit': 5,
                 'source': source_entrez,
-                'target': target_entrez
+                'target': target_entrez,
+                'giant_version': 'v1'  # Required by API
             }
             
             evidence_data = self._make_request(evidence_url, evidence_params)
