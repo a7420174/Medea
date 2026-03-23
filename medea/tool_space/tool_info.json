@@ -426,12 +426,12 @@
         ],
         "code_example": [
             {
-                "description": "Retrieve embeddings for specific genes in a context.",
-                "code": "tool = TranscriptformerEmbeddingTool()\nembeddings, context = tool.get_embedding_for_context(state='control', cell_type='b_cell', gene_names=['CD79A', 'CD19'], disease='your_disease_name')\nif embeddings:\n    print(f'Successfully retrieved {len(embeddings)} embeddings.')"
+                "description": "Retrieve embeddings for specific genes and compute cosine similarity.",
+                "code": "import numpy as np\ntool = TranscriptformerEmbeddingTool()\nembeddings, context = tool.get_embedding_for_context(state='control', cell_type='b_cell', gene_names=['CD79A', 'CD19'], disease='your_disease_name')\nif embeddings:\n    print(f'Successfully retrieved {len(embeddings)} embeddings.')\n    # Each value is a numpy.ndarray — use numpy operations for similarity\n    genes = list(embeddings.keys())\n    sim = np.dot(embeddings[genes[0]], embeddings[genes[1]]) / (np.linalg.norm(embeddings[genes[0]]) * np.linalg.norm(embeddings[genes[1]]))\n    print(f'Cosine similarity between {genes[0]} and {genes[1]}: {sim:.4f}')"
             },
             {
                 "description": "Retrieve embeddings for all genes in a context.",
-                "code": "tool = TranscriptformerEmbeddingTool()\nall_embeddings, context = tool.get_embedding_for_context(state='control', cell_type='b_cell', gene_names=None, disease='your_disease_name')\nif all_embeddings:\n    print(f'Retrieved embeddings for all {len(all_embeddings)} genes in the context.')"
+                "code": "import numpy as np\ntool = TranscriptformerEmbeddingTool()\nall_embeddings, context = tool.get_embedding_for_context(state='control', cell_type='b_cell', gene_names=None, disease='your_disease_name')\nif all_embeddings:\n    print(f'Retrieved embeddings for all {len(all_embeddings)} genes in the context.')\n    # Stack into matrix for batch operations\n    genes = list(all_embeddings.keys())\n    matrix = np.stack([all_embeddings[g] for g in genes])\n    print(f'Embedding matrix shape: {matrix.shape}')"
             }
         ]
     },
