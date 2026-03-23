@@ -375,7 +375,7 @@ REQUIREMENTS:
 - Ensure code follows PEP8 style
 - Use concise, meaningful logging
 
-CRITICAL: Output ONLY the fixed code snippet. No explanations or additional text."""
+CRITICAL: Output ONLY the fixed code wrapped in a ```python ... ``` code block. No explanations, prose, or additional text outside the code block."""
 
 
 DEBUGGER_CHAT_TEMPLATE = '''

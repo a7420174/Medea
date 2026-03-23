@@ -754,8 +754,12 @@ class CodeDebug(BaseAction):
         if "</think>" in raw_code_snippet:
             raw_code_snippet = raw_code_snippet.split("</think>")[-1].strip()
         matches = re.findall(self.pattern, raw_code_snippet, re.DOTALL)
+        if not matches:
+            code_snippet.update_status("error")
+            code_snippet.stderr = f"CodeDebugger did not return a code block. Raw output:\n{raw_code_snippet[:500]}"
+            return f"{code_snippet}: Debug failed (no code block returned), call CodeDebugger again."
         code_snippet.code_snippet = matches[0]
-        code_snippet.status = "unexecuted"
+        code_snippet.update_status("unexecuted")
         return f"{code_snippet}: debugged, call AnalysisExecution next."
 
 
