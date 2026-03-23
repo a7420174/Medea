@@ -494,6 +494,13 @@ def _load_disease_targets_from_api(disease_name, attributes=["otGeneticsPortal",
                 # Extract disease data
                 disease_data = api_response.get("data", {}).get("disease")
                 if not disease_data:
+                    if attempt == 0:
+                        # OLS-derived ID not found in OpenTargets — try OpenTargets-native ID
+                        ot_id = _search_disease_efo_via_opentargets(disease_name)
+                        if ot_id and ot_id != disease_efo:
+                            print(f"[load_disease_targets] OLS ID {disease_efo} not found in OpenTargets, retrying with native ID: {ot_id}", flush=True)
+                            disease_efo = ot_id
+                            variables["efoId"] = ot_id
                     raise ValueError(f"[load_disease_targets] No disease data found for {disease_name} ({disease_efo})")
                 
                 associated_targets = disease_data.get("associatedTargets", {})

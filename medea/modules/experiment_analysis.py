@@ -104,6 +104,10 @@ def _compact_tool_list(tools: list) -> str:
         rt = tool.get("return_type")
         if rt:
             entry["return_type"] = rt
+        elif tool.get("returns"):
+            # Build tuple signature from returns list so LLM knows it's a tuple
+            types = [r.get("return_type", "Any") for r in tool["returns"]]
+            entry["return_type"] = f"Tuple[{', '.join(types)}]"
         ce = tool.get("code_example")
         if ce:
             if isinstance(ce, list):
@@ -915,7 +919,7 @@ class Analysis(BaseAgent):
             llm=llm,
             actions=actions,
             manager=manager,
-            max_exec_steps=20,
+            max_exec_steps=30,
             logger=logger,
         )
         self.prompt_gen = BasePromptGen(
